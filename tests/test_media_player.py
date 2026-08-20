@@ -1732,11 +1732,14 @@ class TestMediaImageUrl:
     ) -> None:
         """Test media_image_url falls back to series for episodes without images."""
         from custom_components.embymedia.media_player import EmbyMediaPlayer
+        from custom_components.embymedia.models import MediaType as EmbyMediaType
 
         session = MagicMock()
         session.now_playing = MagicMock()
         session.now_playing.item_id = "episode-123"
+        session.now_playing.media_type = EmbyMediaType.EPISODE
         session.now_playing.image_tags = ()  # No episode image
+        session.now_playing.season_id = None
         session.now_playing.series_id = "series-456"
         session.now_playing.album_id = None
 
@@ -1745,6 +1748,58 @@ class TestMediaImageUrl:
 
         assert player.media_image_url == (
             "/api/embymedia/image/server-123/series-456/Primary"
+            "?maxWidth=300&maxHeight=450"
+        )
+
+    def test_media_image_url_episode_prefers_season_cover(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator: MagicMock,
+    ) -> None:
+        """Test episode artwork prefers the season cover over its thumbnail."""
+        from custom_components.embymedia.media_player import EmbyMediaPlayer
+        from custom_components.embymedia.models import MediaType as EmbyMediaType
+
+        session = MagicMock()
+        session.now_playing = MagicMock()
+        session.now_playing.item_id = "episode-123"
+        session.now_playing.media_type = EmbyMediaType.EPISODE
+        session.now_playing.image_tags = (("Primary", "episode-tag"),)
+        session.now_playing.season_id = "season-456"
+        session.now_playing.series_id = "series-789"
+        session.now_playing.album_id = None
+
+        mock_coordinator.get_session.return_value = session
+        player = EmbyMediaPlayer(mock_coordinator, "device-abc")
+
+        assert player.media_image_url == (
+            "/api/embymedia/image/server-123/season-456/Primary"
+            "?maxWidth=300&maxHeight=450"
+        )
+
+    def test_media_image_url_episode_prefers_series_to_thumbnail_without_season(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator: MagicMock,
+    ) -> None:
+        """Test episode artwork uses its series cover when season ID is absent."""
+        from custom_components.embymedia.media_player import EmbyMediaPlayer
+        from custom_components.embymedia.models import MediaType as EmbyMediaType
+
+        session = MagicMock()
+        session.now_playing = MagicMock()
+        session.now_playing.item_id = "episode-123"
+        session.now_playing.media_type = EmbyMediaType.EPISODE
+        session.now_playing.image_tags = (("Primary", "episode-tag"),)
+        session.now_playing.season_id = None
+        session.now_playing.series_id = "series-789"
+        session.now_playing.album_id = None
+
+        mock_coordinator.get_session.return_value = session
+        player = EmbyMediaPlayer(mock_coordinator, "device-abc")
+
+        assert player.media_image_url == (
+            "/api/embymedia/image/server-123/series-789/Primary"
             "?maxWidth=300&maxHeight=450"
         )
 

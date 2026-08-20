@@ -342,11 +342,12 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
     def media_image_url(self) -> str | None:
         """Return the image URL of current playing media.
 
-        Implements fallback hierarchy:
-        1. Item's Primary image (if available)
-        2. Series Primary image (for episodes without images)
-        3. Album Primary image (for audio without images)
-        4. Item Primary image without tag (fallback)
+        Implements artwork hierarchy:
+        1. Season Primary image (for episodes)
+        2. Series Primary image (for episodes without a season ID)
+        3. Item's Primary image (if available)
+        4. Album Primary image (for audio without images)
+        5. Item Primary image without tag (fallback)
 
         Returns:
             Full URL to the image or None if not playing.
@@ -358,6 +359,13 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         now_playing = session.now_playing
         image_tags_dict = dict(now_playing.image_tags)
 
+        # Prefer portrait cover art over an episode's landscape thumbnail.
+        if now_playing.media_type == EmbyMediaType.EPISODE:
+            if now_playing.season_id:
+                return self._image_proxy_url(now_playing.season_id)
+            if now_playing.series_id:
+                return self._image_proxy_url(now_playing.series_id)
+
         # Check if item has a Primary image tag
         primary_tag = image_tags_dict.get("Primary")
 
@@ -365,7 +373,7 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
             # Item has its own Primary image
             return self._image_proxy_url(now_playing.item_id, tag=primary_tag)
 
-        # Fallback: Episode -> Series
+        # Fallback for incomplete episode metadata.
         if now_playing.series_id:
             return self._image_proxy_url(now_playing.series_id)
 
