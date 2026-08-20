@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Register persistent WebSocket and health-check loops with the config entry so they no
+  longer hold up Home Assistant startup.
+- Send remote-play parameters in the format expected by Emby clients and include the
+  controlling user and selected media source, restoring playback on Apple TV.
+- Serve discovery artwork, now-playing images, and media-browser thumbnails through the
+  authenticated Home Assistant image proxy to avoid mixed-content failures and exposed tokens.
+
 ## [0.6.0] - 2026-01-11
 
 ### Fixed

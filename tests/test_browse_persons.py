@@ -187,6 +187,10 @@ class TestPersonBrowsing:
         assert result.can_play is False
         assert result.can_expand is True
         assert result.media_class == MediaClass.DIRECTORY
+        assert result.thumbnail == (
+            "/api/embymedia/image/test-server-id/person-1/Primary"
+            "?maxWidth=300&maxHeight=450&tag=tag123"
+        )
 
     async def test_person_to_browse_media_no_image(
         self,

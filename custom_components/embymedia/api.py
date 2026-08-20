@@ -1953,6 +1953,8 @@ class EmbyClient:
         item_ids: list[str],
         start_position_ticks: int = 0,
         play_command: str = "PlayNow",
+        controlling_user_id: str | None = None,
+        media_source_id: str | None = None,
     ) -> None:
         """Play items on a session.
 
@@ -1961,18 +1963,32 @@ class EmbyClient:
             item_ids: List of item IDs to play.
             start_position_ticks: Starting position.
             play_command: PlayNow, PlayNext, or PlayLast.
+            controlling_user_id: Emby user controlling playback, if known.
+            media_source_id: Selected Emby media source, if known.
 
         Raises:
             EmbyConnectionError: Connection failed.
             EmbyAuthenticationError: API key is invalid.
         """
-        endpoint = f"/Sessions/{session_id}/Playing"
-        data: dict[str, object] = {
-            "ItemIds": ",".join(item_ids),
-            "StartPositionTicks": start_position_ticks,
-            "PlayCommand": play_command,
-        }
-        await self._request_post(endpoint, data=data)
+        from urllib.parse import quote, urlencode
+
+        # Emby's remote-play endpoint expects these values as query
+        # parameters. Supplying them as JSON returns a successful response on
+        # some server versions, but the target client receives no play command.
+        query = urlencode(
+            {
+                "ItemIds": ",".join(item_ids),
+                "StartPositionTicks": start_position_ticks,
+                "PlayCommand": play_command,
+            }
+        )
+        endpoint = f"/Sessions/{quote(session_id, safe='')}/Playing?{query}"
+        body: dict[str, object] = {}
+        if controlling_user_id:
+            body["ControllingUserId"] = controlling_user_id
+        if media_source_id:
+            body["MediaSourceId"] = media_source_id
+        await self._request_post(endpoint, data=body)
 
     def get_video_stream_url(
         self,

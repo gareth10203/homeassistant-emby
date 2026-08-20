@@ -2061,10 +2061,13 @@ class TestPlayItems:
             )
             await client.async_play_items("session-123", ["movie-456"])
 
-            # Verify POST was called with correct endpoint
             mock_session.post.assert_called_once()
             call_args = mock_session.post.call_args
-            assert "/Sessions/session-123/Playing" in str(call_args)
+            assert call_args.args[0] == (
+                "http://emby.local:8096/Sessions/session-123/Playing"
+                "?ItemIds=movie-456&StartPositionTicks=0&PlayCommand=PlayNow"
+            )
+            assert call_args.kwargs["json"] == {}
             await client.close()
 
     @pytest.mark.asyncio
@@ -2088,11 +2091,25 @@ class TestPlayItems:
                 port=8096,
                 api_key="test-key",
             )
-            await client.async_play_items("session-123", ["movie-1", "movie-2", "movie-3"])
+            await client.async_play_items(
+                "session/123",
+                ["movie-1", "movie-2", "movie-3"],
+                start_position_ticks=123456,
+                play_command="PlayNext",
+                controlling_user_id="user-456",
+                media_source_id="source-789",
+            )
 
             call_args = mock_session.post.call_args
-            json_body = call_args.kwargs.get("json", {})
-            assert "movie-1,movie-2,movie-3" in json_body.get("ItemIds", "")
+            assert call_args.args[0] == (
+                "http://emby.local:8096/Sessions/session%2F123/Playing"
+                "?ItemIds=movie-1%2Cmovie-2%2Cmovie-3"
+                "&StartPositionTicks=123456&PlayCommand=PlayNext"
+            )
+            assert call_args.kwargs["json"] == {
+                "ControllingUserId": "user-456",
+                "MediaSourceId": "source-789",
+            }
             await client.close()
 
 

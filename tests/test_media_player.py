@@ -1661,20 +1661,11 @@ class TestMediaImageUrl:
         session.now_playing.album_id = None
 
         mock_coordinator.get_session.return_value = session
-        mock_coordinator.client = MagicMock()
-        mock_coordinator.client.get_image_url.return_value = (
-            "http://emby:8096/Items/movie-123/Images/Primary?api_key=key&tag=abc123"
-        )
-
         player = EmbyMediaPlayer(mock_coordinator, "device-abc")
 
-        url = player.media_image_url
-        assert url is not None
-        assert "movie-123" in url
-        mock_coordinator.client.get_image_url.assert_called_once_with(
-            "movie-123",
-            image_type="Primary",
-            tag="abc123",
+        assert player.media_image_url == (
+            "/api/embymedia/image/server-123/movie-123/Primary"
+            "?maxWidth=300&maxHeight=450&tag=abc123"
         )
 
     def test_media_image_url_when_not_playing(
@@ -1724,20 +1715,11 @@ class TestMediaImageUrl:
         session.now_playing.album_id = None
 
         mock_coordinator.get_session.return_value = session
-        mock_coordinator.client = MagicMock()
-        mock_coordinator.client.get_image_url.return_value = (
-            "http://emby:8096/Items/movie-123/Images/Primary?api_key=key"
-        )
-
         player = EmbyMediaPlayer(mock_coordinator, "device-abc")
 
-        url = player.media_image_url
-        assert url is not None
-        # Called without tag when no Primary tag
-        mock_coordinator.client.get_image_url.assert_called_once_with(
-            "movie-123",
-            image_type="Primary",
-            tag=None,
+        assert player.media_image_url == (
+            "/api/embymedia/image/server-123/movie-123/Primary"
+            "?maxWidth=300&maxHeight=450"
         )
 
     def test_media_image_url_episode_fallback_to_series(
@@ -1756,20 +1738,11 @@ class TestMediaImageUrl:
         session.now_playing.album_id = None
 
         mock_coordinator.get_session.return_value = session
-        mock_coordinator.client = MagicMock()
-        mock_coordinator.client.get_image_url.return_value = (
-            "http://emby:8096/Items/series-456/Images/Primary?api_key=key"
-        )
-
         player = EmbyMediaPlayer(mock_coordinator, "device-abc")
 
-        url = player.media_image_url
-        assert url is not None
-        # Should use series_id since episode has no Primary image tag
-        mock_coordinator.client.get_image_url.assert_called_once_with(
-            "series-456",
-            image_type="Primary",
-            tag=None,
+        assert player.media_image_url == (
+            "/api/embymedia/image/server-123/series-456/Primary"
+            "?maxWidth=300&maxHeight=450"
         )
 
     def test_media_image_url_audio_fallback_to_album(
@@ -1788,20 +1761,11 @@ class TestMediaImageUrl:
         session.now_playing.album_id = "album-456"
 
         mock_coordinator.get_session.return_value = session
-        mock_coordinator.client = MagicMock()
-        mock_coordinator.client.get_image_url.return_value = (
-            "http://emby:8096/Items/album-456/Images/Primary?api_key=key"
-        )
-
         player = EmbyMediaPlayer(mock_coordinator, "device-abc")
 
-        url = player.media_image_url
-        assert url is not None
-        # Should use album_id since track has no Primary image tag
-        mock_coordinator.client.get_image_url.assert_called_once_with(
-            "album-456",
-            image_type="Primary",
-            tag=None,
+        assert player.media_image_url == (
+            "/api/embymedia/image/server-123/album-456/Primary"
+            "?maxWidth=300&maxHeight=450"
         )
 
 

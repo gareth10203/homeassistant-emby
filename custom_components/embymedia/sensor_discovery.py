@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+from urllib.parse import quote, urlencode
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -99,14 +100,22 @@ class EmbyDiscoverySensorBase(
         if image_tags and image_type in image_tags:
             tag = image_tags[image_type]
 
-        url: str | None = self.coordinator.client.get_image_url(
-            item_id=item_id,
-            image_type=image_type,
-            max_width=max_width,
-            max_height=max_height,
-            tag=tag,
+        # Keep discovery artwork on the Home Assistant origin. Returning the
+        # Emby URL directly exposes the API key in entity state and browsers
+        # block it as mixed content when Home Assistant is served over HTTPS.
+        path = "/api/embymedia/image/{}/{}/{}".format(
+            quote(self.coordinator.server_id, safe=""),
+            quote(str(item_id), safe=""),
+            quote(image_type, safe=""),
         )
-        return url
+        params: dict[str, str | int] = {
+            "maxWidth": max_width,
+            "maxHeight": max_height,
+        }
+        if tag:
+            params["tag"] = tag
+
+        return f"{path}?{urlencode(params)}"
 
     def _get_series_image_url(
         self,
@@ -129,14 +138,14 @@ class EmbyDiscoverySensorBase(
         if not series_id:
             return None
 
-        url: str | None = self.coordinator.client.get_image_url(
+        image_tags = {"Primary": series_primary_tag} if series_primary_tag else None
+        return self._get_image_url(
             item_id=series_id,
+            image_tags=image_tags,
             image_type="Primary",
             max_width=max_width,
             max_height=max_height,
-            tag=series_primary_tag,
         )
-        return url
 
 
 # =============================================================================

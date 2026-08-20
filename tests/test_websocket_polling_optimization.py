@@ -397,12 +397,26 @@ class TestAdditionalCoverage:
         mock_task.cancel = MagicMock()
         coordinator._health_check_task = mock_task
 
+        new_task = MagicMock()
+
+        def create_background_task(
+            task_hass: HomeAssistant, coroutine: object, *, name: str
+        ) -> MagicMock:
+            assert task_hass is hass
+            coroutine.close()  # type: ignore[attr-defined]
+            assert name == "embymedia_test-server_health_check"
+            return new_task
+
+        mock_config_entry.async_create_background_task.side_effect = create_background_task
+
         # Schedule new health check (should cancel existing)
         coordinator._polling_disabled = True
         coordinator._schedule_health_check()
 
         # Original task should have been cancelled
         mock_task.cancel.assert_called_once()
+        mock_config_entry.async_create_background_task.assert_called_once()
+        assert coordinator._health_check_task is new_task
 
     @pytest.mark.asyncio
     async def test_health_check_handles_emby_error(
@@ -466,6 +480,11 @@ class TestAdditionalCoverage:
 
         # Patch asyncio.sleep to return immediately
         with patch("asyncio.sleep", new_callable=AsyncMock):
+            mock_config_entry.async_create_background_task.side_effect = (
+                lambda task_hass, coroutine, *, name: task_hass.async_create_background_task(
+                    coroutine, name=name
+                )
+            )
             coordinator._schedule_health_check()
             # Give the task a chance to run
             await asyncio.sleep(0.01)

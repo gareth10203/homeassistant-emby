@@ -208,6 +208,9 @@ def mock_coordinator_for_browse(hass: HomeAssistant) -> MagicMock:
     client.async_get_items = AsyncMock()
     client.async_get_seasons = AsyncMock()
     client.async_get_episodes = AsyncMock()
+    client.async_get_playback_info = AsyncMock(
+        return_value={"MediaSources": [{"Id": "source-123"}]}
+    )
     client.get_image_url = MagicMock(return_value="http://emby:8096/image.jpg")
     coordinator.client = client
 
@@ -465,7 +468,10 @@ class TestBrowseMediaThumbnails:
         result = await player.async_browse_media()
 
         assert result.children is not None
-        assert result.children[0].thumbnail == "http://emby:8096/image.jpg"
+        assert result.children[0].thumbnail == (
+            "/api/embymedia/image/server-123/lib-1/Primary"
+            "?maxWidth=300&maxHeight=450&tag=abc123"
+        )
 
     @pytest.mark.asyncio
     async def test_item_thumbnail_generation(
@@ -498,7 +504,10 @@ class TestBrowseMediaThumbnails:
         )
 
         assert result.children is not None
-        assert result.children[0].thumbnail == "http://emby:8096/image.jpg"
+        assert result.children[0].thumbnail == (
+            "/api/embymedia/image/server-123/movie-1/Primary"
+            "?maxWidth=300&maxHeight=450&tag=def456"
+        )
 
     @pytest.mark.asyncio
     async def test_season_thumbnail_generation(
@@ -528,7 +537,10 @@ class TestBrowseMediaThumbnails:
         )
 
         assert result.children is not None
-        assert result.children[0].thumbnail == "http://emby:8096/image.jpg"
+        assert result.children[0].thumbnail == (
+            "/api/embymedia/image/server-123/season-1/Primary"
+            "?maxWidth=300&maxHeight=450&tag=ghi789"
+        )
 
     @pytest.mark.asyncio
     async def test_folder_item_browse(
@@ -598,6 +610,11 @@ class TestAsyncPlayMedia:
             ["movie-123"],
             start_position_ticks=0,
             play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
+        )
+        mock_coordinator_for_browse.client.async_get_playback_info.assert_awaited_once_with(
+            "movie-123", "user-xyz-789"
         )
 
     @pytest.mark.asyncio
@@ -624,6 +641,36 @@ class TestAsyncPlayMedia:
             ["episode-456"],
             start_position_ticks=0,
             play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
+        )
+
+    @pytest.mark.asyncio
+    async def test_play_media_without_media_source(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_for_browse: MagicMock,
+        mock_session_with_user: MagicMock,
+    ) -> None:
+        """Test playback still includes the user when Emby returns no media source."""
+        from custom_components.embymedia.media_player import EmbyMediaPlayer
+
+        mock_coordinator_for_browse.get_session.return_value = mock_session_with_user
+        mock_coordinator_for_browse.client.async_get_playback_info.return_value = {
+            "MediaSources": []
+        }
+        mock_coordinator_for_browse.client.async_play_items = AsyncMock()
+
+        player = EmbyMediaPlayer(mock_coordinator_for_browse, "device-abc-123")
+        await player.async_play_media(MediaType.MOVIE, "movie-123")
+
+        mock_coordinator_for_browse.client.async_play_items.assert_awaited_once_with(
+            "session-xyz",
+            ["movie-123"],
+            start_position_ticks=0,
+            play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id=None,
         )
 
     @pytest.mark.asyncio
@@ -673,6 +720,8 @@ class TestAsyncPlayMedia:
             ["movie-789"],
             start_position_ticks=0,
             play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
         )
 
     @pytest.mark.asyncio
@@ -702,6 +751,8 @@ class TestAsyncPlayMedia:
             [""],
             start_position_ticks=0,
             play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
         )
 
 
@@ -835,6 +886,8 @@ class TestBrowseMusicArtist:
             ["track-123"],
             start_position_ticks=0,
             play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
         )
 
 
@@ -912,6 +965,8 @@ class TestEnqueueSupport:
             ["track-123"],
             start_position_ticks=0,
             play_command="PlayLast",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
         )
 
     @pytest.mark.asyncio
@@ -941,6 +996,8 @@ class TestEnqueueSupport:
             ["track-123"],
             start_position_ticks=0,
             play_command="PlayNext",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
         )
 
     @pytest.mark.asyncio
@@ -970,6 +1027,8 @@ class TestEnqueueSupport:
             ["track-123"],
             start_position_ticks=0,
             play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
         )
 
     @pytest.mark.asyncio
@@ -999,6 +1058,8 @@ class TestEnqueueSupport:
             ["track-123"],
             start_position_ticks=0,
             play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
         )
 
     def test_supported_features_includes_enqueue(
@@ -1059,6 +1120,8 @@ class TestQueueMultipleItems:
             ["track-1", "track-2", "track-3"],
             start_position_ticks=0,
             play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
         )
 
     @pytest.mark.asyncio
@@ -1091,6 +1154,8 @@ class TestQueueMultipleItems:
             ["ep-1", "ep-2"],
             start_position_ticks=0,
             play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
         )
 
     @pytest.mark.asyncio
@@ -1123,6 +1188,8 @@ class TestQueueMultipleItems:
             ["item-1", "item-2"],
             start_position_ticks=0,
             play_command="PlayNow",
+            controlling_user_id="user-xyz-789",
+            media_source_id="source-123",
         )
 
     @pytest.mark.asyncio
@@ -1230,9 +1297,9 @@ class TestItemToBrowseMedia:
             }
         )
 
-        assert result.thumbnail == "http://emby.local/album-image.jpg"
-        mock_coordinator_for_browse.client.get_image_url.assert_called_once_with(
-            "album-123", image_type="Primary", tag="tag123"
+        assert result.thumbnail == (
+            "/api/embymedia/image/server-123/album-123/Primary"
+            "?maxWidth=300&maxHeight=450&tag=tag123"
         )
 
     def test_track_to_browse_media_with_thumbnail(
@@ -1257,9 +1324,9 @@ class TestItemToBrowseMedia:
             }
         )
 
-        assert result.thumbnail == "http://emby.local/track-image.jpg"
-        mock_coordinator_for_browse.client.get_image_url.assert_called_once_with(
-            "track-123", image_type="Primary", tag="tag456"
+        assert result.thumbnail == (
+            "/api/embymedia/image/server-123/track-123/Primary"
+            "?maxWidth=300&maxHeight=450&tag=tag456"
         )
 
 
@@ -2111,9 +2178,9 @@ class TestMovieLibraryBrowsing:
 
         mock_coordinator_for_browse.client.async_get_years = AsyncMock(
             return_value=[
+                {"Name": "2026", "Id": "2026"},
+                {"Name": "2025", "Id": "2025"},
                 {"Name": "2024", "Id": "2024"},
-                {"Name": "2023", "Id": "2023"},
-                {"Name": "2022", "Id": "2022"},
             ]
         )
         mock_coordinator_for_browse.get_session.return_value = mock_session_with_user
@@ -2128,7 +2195,7 @@ class TestMovieLibraryBrowsing:
         assert result.children is not None
         assert len(result.children) == 3
         # Years should be sorted newest first
-        assert result.children[0].title == "2024"
+        assert result.children[0].title == "2026"
 
     @pytest.mark.asyncio
     async def test_browse_movies_by_year(
@@ -2143,7 +2210,7 @@ class TestMovieLibraryBrowsing:
         mock_coordinator_for_browse.client.async_get_items = AsyncMock(
             return_value={
                 "Items": [
-                    {"Id": "movie-1", "Name": "Movie 2024", "Type": "Movie", "ImageTags": {}},
+                    {"Id": "movie-1", "Name": "Movie 2026", "Type": "Movie", "ImageTags": {}},
                 ],
                 "TotalRecordCount": 1,
             }
@@ -2153,7 +2220,7 @@ class TestMovieLibraryBrowsing:
         player = EmbyMediaPlayer(mock_coordinator_for_browse, "device-abc-123")
         result = await player.async_browse_media(
             media_content_type=MediaType.VIDEO,
-            media_content_id="movieyearitems:lib-movies:2024",
+            media_content_id="movieyearitems:lib-movies:2026",
         )
 
         assert isinstance(result, BrowseMedia)
@@ -2162,7 +2229,7 @@ class TestMovieLibraryBrowsing:
         # Verify API was called with year filter
         mock_coordinator_for_browse.client.async_get_items.assert_called_once()
         call_kwargs = mock_coordinator_for_browse.client.async_get_items.call_args.kwargs
-        assert call_kwargs.get("years") == "2024"
+        assert call_kwargs.get("years") == "2026"
 
     @pytest.mark.asyncio
     async def test_browse_movie_years_api_error_returns_empty(

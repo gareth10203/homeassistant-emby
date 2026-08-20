@@ -154,6 +154,18 @@ class TestCoordinatorWebSocketInterval:
             CONF_WEBSOCKET_INTERVAL: 3000,  # Custom 3000ms interval
         }
 
+        background_task = MagicMock()
+
+        def create_background_task(
+            task_hass: HomeAssistant, coroutine: object, *, name: str
+        ) -> MagicMock:
+            assert task_hass is hass
+            coroutine.close()  # type: ignore[attr-defined]
+            assert name == "embymedia_test-server_websocket_receive"
+            return background_task
+
+        mock_entry.async_create_background_task.side_effect = create_background_task
+
         # Create coordinator
         mock_client = MagicMock()
         mock_client.async_get_sessions = AsyncMock(return_value=[])
@@ -185,6 +197,8 @@ class TestCoordinatorWebSocketInterval:
 
         # Verify the interval was passed to async_subscribe_sessions
         mock_ws.async_subscribe_sessions.assert_called_once_with(interval_ms=3000)
+        mock_entry.async_create_background_task.assert_called_once()
+        assert coordinator._websocket_receive_task is background_task
 
     @pytest.mark.asyncio
     async def test_coordinator_uses_default_interval_when_not_configured(
@@ -199,6 +213,9 @@ class TestCoordinatorWebSocketInterval:
         # Create a mock config entry without custom interval
         mock_entry = MagicMock()
         mock_entry.options = {}  # No custom interval
+        mock_entry.async_create_background_task.side_effect = (
+            lambda _hass, coroutine, *, name: coroutine.close()
+        )
 
         mock_client = MagicMock()
         mock_client.async_get_sessions = AsyncMock(return_value=[])

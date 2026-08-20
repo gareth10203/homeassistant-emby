@@ -6,6 +6,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING
+from urllib.parse import quote, urlencode
 
 from homeassistant.components.media_player import (
     MediaClass,
@@ -127,6 +128,27 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         # Cache for similar items to avoid repeated API calls
         self._similar_items_cache: list[dict[str, str]] | None = None
         self._similar_items_item_id: str | None = None
+
+    def _image_proxy_url(
+        self,
+        item_id: str,
+        image_type: str = "Primary",
+        tag: str | None = None,
+    ) -> str:
+        """Return a same-origin URL for Emby artwork.
+
+        BrowseMedia thumbnails are rendered by the Home Assistant frontend.
+        Returning Emby's HTTP URL there causes mixed-content failures and
+        exposes the API key, so use the integration's authenticated proxy.
+        """
+        params: dict[str, str | int] = {"maxWidth": 300, "maxHeight": 450}
+        if tag:
+            params["tag"] = tag
+        return (
+            f"/api/embymedia/image/{quote(self.coordinator.server_id, safe='')}"
+            f"/{quote(str(item_id), safe='')}/{quote(image_type, safe='')}"
+            f"?{urlencode(params)}"
+        )
 
     @property
     def state(self) -> MediaPlayerState:
@@ -331,41 +353,20 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         # Check if item has a Primary image tag
         primary_tag = image_tags_dict.get("Primary")
 
-        # Get the client for image URL generation
-        # Type cast needed due to CoordinatorEntity generic type erasure
-        coordinator: EmbyDataUpdateCoordinator = self.coordinator
-        client = coordinator.client
-
         if primary_tag:
             # Item has its own Primary image
-            return client.get_image_url(
-                now_playing.item_id,
-                image_type="Primary",
-                tag=primary_tag,
-            )
+            return self._image_proxy_url(now_playing.item_id, tag=primary_tag)
 
         # Fallback: Episode -> Series
         if now_playing.series_id:
-            return client.get_image_url(
-                now_playing.series_id,
-                image_type="Primary",
-                tag=None,
-            )
+            return self._image_proxy_url(now_playing.series_id)
 
         # Fallback: Audio -> Album
         if now_playing.album_id:
-            return client.get_image_url(
-                now_playing.album_id,
-                image_type="Primary",
-                tag=None,
-            )
+            return self._image_proxy_url(now_playing.album_id)
 
         # Final fallback: Use item ID without tag
-        return client.get_image_url(
-            now_playing.item_id,
-            image_type="Primary",
-            tag=None,
-        )
+        return self._image_proxy_url(now_playing.item_id)
 
     @property
     def media_duration(self) -> int | None:
@@ -700,11 +701,25 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         # Handle container types (albums, seasons, playlists)
         item_ids = await self._resolve_play_media_ids(content_type, ids)
 
+        # Emby clients need the controlling user and selected media source in
+        # the PlayRequest body. Without these fields the server can return
+        # 204 while the client silently ignores the play command.
+        media_source_id: str | None = None
+        if item_ids and session.user_id:
+            playback_info = await self.coordinator.client.async_get_playback_info(
+                item_ids[0], session.user_id
+            )
+            media_sources = playback_info.get("MediaSources", [])
+            if media_sources:
+                media_source_id = media_sources[0].get("Id")
+
         await self.coordinator.client.async_play_items(
             session.session_id,
             item_ids,
             start_position_ticks=0,
             play_command=play_command,
+            controlling_user_id=session.user_id,
+            media_source_id=media_source_id,
         )
 
     async def _resolve_play_media_ids(self, content_type: str, ids: list[str]) -> list[str]:
@@ -1591,16 +1606,11 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         Returns:
             BrowseMedia representation of the library.
         """
-        coordinator: EmbyDataUpdateCoordinator = self.coordinator
-        client = coordinator.client
-
         # Get thumbnail if available
         thumbnail: str | None = None
         image_tags = library.get("ImageTags", {})
         if "Primary" in image_tags:
-            thumbnail = client.get_image_url(
-                library["Id"], image_type="Primary", tag=image_tags["Primary"]
-            )
+            thumbnail = self._image_proxy_url(library["Id"], tag=image_tags["Primary"])
 
         # Use special content types for each library type
         collection_type = library.get("CollectionType", "")
@@ -1639,9 +1649,6 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         Returns:
             BrowseMedia representation of the item.
         """
-        coordinator: EmbyDataUpdateCoordinator = self.coordinator
-        client = coordinator.client
-
         item_type = item.get("Type", "Unknown")
         media_class = emby_type_to_media_class(item_type)
         can_play = can_play_emby_type(item_type)
@@ -1667,9 +1674,7 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         thumbnail: str | None = None
         image_tags = item.get("ImageTags", {})
         if "Primary" in image_tags:
-            thumbnail = client.get_image_url(
-                item["Id"], image_type="Primary", tag=image_tags["Primary"]
-            )
+            thumbnail = self._image_proxy_url(item["Id"], tag=image_tags["Primary"])
 
         return BrowseMedia(
             media_class=media_class,
@@ -1691,16 +1696,11 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         Returns:
             BrowseMedia representation of the season.
         """
-        coordinator: EmbyDataUpdateCoordinator = self.coordinator
-        client = coordinator.client
-
         # Get thumbnail if available
         thumbnail: str | None = None
         image_tags = season.get("ImageTags", {})
         if "Primary" in image_tags:
-            thumbnail = client.get_image_url(
-                season["Id"], image_type="Primary", tag=image_tags["Primary"]
-            )
+            thumbnail = self._image_proxy_url(season["Id"], tag=image_tags["Primary"])
 
         return BrowseMedia(
             media_class=MediaClass.SEASON,
@@ -1721,16 +1721,11 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         Returns:
             BrowseMedia representation of the album.
         """
-        coordinator: EmbyDataUpdateCoordinator = self.coordinator
-        client = coordinator.client
-
         # Get thumbnail if available
         thumbnail: str | None = None
         image_tags = album.get("ImageTags", {})
         if "Primary" in image_tags:
-            thumbnail = client.get_image_url(
-                album["Id"], image_type="Primary", tag=image_tags["Primary"]
-            )
+            thumbnail = self._image_proxy_url(album["Id"], tag=image_tags["Primary"])
 
         return BrowseMedia(
             media_class=MediaClass.ALBUM,
@@ -1751,16 +1746,11 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         Returns:
             BrowseMedia representation of the track.
         """
-        coordinator: EmbyDataUpdateCoordinator = self.coordinator
-        client = coordinator.client
-
         # Get thumbnail if available
         thumbnail: str | None = None
         image_tags = track.get("ImageTags", {})
         if "Primary" in image_tags:
-            thumbnail = client.get_image_url(
-                track["Id"], image_type="Primary", tag=image_tags["Primary"]
-            )
+            thumbnail = self._image_proxy_url(track["Id"], tag=image_tags["Primary"])
 
         return BrowseMedia(
             media_class=MediaClass.TRACK,
@@ -2308,17 +2298,12 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         Returns:
             BrowseMedia representation of the person.
         """
-        coordinator: EmbyDataUpdateCoordinator = self.coordinator
-        client = coordinator.client
-
         # Get thumbnail if available
         thumbnail: str | None = None
         image_tags = person.get("ImageTags", {})
         if isinstance(image_tags, dict) and "Primary" in image_tags:
             person_id = str(person.get("Id", ""))
-            thumbnail = client.get_image_url(
-                person_id, image_type="Primary", tag=str(image_tags["Primary"])
-            )
+            thumbnail = self._image_proxy_url(person_id, tag=str(image_tags["Primary"]))
 
         return BrowseMedia(
             media_class=MediaClass.DIRECTORY,
