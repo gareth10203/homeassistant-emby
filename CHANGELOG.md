@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Movie library browsing views for all movies, newest date added, and newest premiere date.
+
 ### Fixed
 - Register persistent WebSocket and health-check loops with the config entry so they no
   longer hold up Home Assistant startup.
