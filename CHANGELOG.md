@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Movie library browsing views for all movies, newest date added, and newest premiere date.
 
 ### Fixed
+- Load now-playing artwork directly from the same-origin image proxy instead of
+  wrapping it in Home Assistant's media-player proxy.
 - Register persistent WebSocket and health-check loops with the config entry so they no
   longer hold up Home Assistant startup.
 - Send remote-play parameters in the format expected by Emby clients and include the

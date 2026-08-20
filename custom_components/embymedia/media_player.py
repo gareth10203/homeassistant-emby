@@ -116,6 +116,10 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
     """
 
     _attr_name = None  # Use device name
+    # media_image_url uses the same-origin Home Assistant image proxy, so the
+    # frontend can request it directly. Leaving this False makes Home Assistant
+    # proxy the proxy and can fail when Core cannot reach its configured URL.
+    _attr_media_image_remotely_accessible = True
 
     def __init__(
         self,

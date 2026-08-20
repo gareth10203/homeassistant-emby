@@ -1663,10 +1663,13 @@ class TestMediaImageUrl:
         mock_coordinator.get_session.return_value = session
         player = EmbyMediaPlayer(mock_coordinator, "device-abc")
 
-        assert player.media_image_url == (
+        expected_url = (
             "/api/embymedia/image/server-123/movie-123/Primary"
             "?maxWidth=300&maxHeight=450&tag=abc123"
         )
+        assert player.media_image_url == expected_url
+        assert player.media_image_remotely_accessible is True
+        assert player.entity_picture == expected_url
 
     def test_media_image_url_when_not_playing(
         self,
