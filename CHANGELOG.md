@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Movie library browsing views for all movies, newest date added, and newest premiere date.
 
 ### Fixed
+- Publish the same-origin Emby artwork URL as `entity_picture_local` instead of
+  wrapping it in Home Assistant's incompatible generic media-player proxy.
 - Prefer the current season cover, then the series cover, over episode thumbnails for
   now-playing TV artwork.
 - Load now-playing artwork directly from the same-origin image proxy instead of

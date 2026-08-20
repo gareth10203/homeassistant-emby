@@ -385,6 +385,16 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         return self._image_proxy_url(now_playing.item_id)
 
     @property
+    def media_image_local(self) -> str | None:
+        """Return the same-origin Emby proxy URL as the local image URL.
+
+        Home Assistant's generic media-player proxy cannot fetch a relative
+        URL, and would otherwise wrap this integration's image proxy in a
+        second proxy that returns HTTP 500.
+        """
+        return self.media_image_url
+
+    @property
     def media_duration(self) -> int | None:
         """Return the duration of current playing media in seconds.
 

@@ -1668,8 +1668,10 @@ class TestMediaImageUrl:
             "?maxWidth=300&maxHeight=450&tag=abc123"
         )
         assert player.media_image_url == expected_url
+        assert player.media_image_local == expected_url
         assert player.media_image_remotely_accessible is True
         assert player.entity_picture == expected_url
+        assert player.state_attributes["entity_picture_local"] == expected_url
 
     def test_media_image_url_when_not_playing(
         self,
