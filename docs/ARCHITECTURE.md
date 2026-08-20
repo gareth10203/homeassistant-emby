@@ -1,468 +1,220 @@
-# Architecture Overview
+# Architecture
 
-This document describes the technical architecture of the Emby Media integration for Home Assistant.
+Emby Media is a config-entry based Home Assistant integration. One config entry
+represents one Emby Server and one selected Emby user context.
 
----
+## Component map
 
-## High-Level Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                            Home Assistant                                 │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                           │
-│  ┌─────────────────────────────────────────────────────────────────────┐ │
-│  │                         Config Entry                                 │ │
-│  │  Stores: host, port, api_key, ssl, user_id, options                 │ │
-│  └─────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                      │
-│                                    ▼                                      │
-│  ┌─────────────────────────────────────────────────────────────────────┐ │
-│  │                       Runtime Data                                   │ │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │ │
-│  │  │ Session      │  │ Server       │  │ Library      │              │ │
-│  │  │ Coordinator  │  │ Coordinator  │  │ Coordinator  │              │ │
-│  │  └──────────────┘  └──────────────┘  └──────────────┘              │ │
-│  │                                                                      │ │
-│  │  ┌──────────────────────────────────────────────────────────────┐   │ │
-│  │  │              Discovery Coordinators (per user)                │   │ │
-│  │  └──────────────────────────────────────────────────────────────┘   │ │
-│  └─────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                      │
-│                                    ▼                                      │
-│  ┌─────────────────────────────────────────────────────────────────────┐ │
-│  │                          EmbyClient                                  │ │
-│  │                                                                      │ │
-│  │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐           │ │
-│  │  │ HTTP Client   │  │ WebSocket     │  │ Metrics       │           │ │
-│  │  │ (aiohttp)     │  │ Client        │  │ Collector     │           │ │
-│  │  └───────────────┘  └───────────────┘  └───────────────┘           │ │
-│  │                                                                      │ │
-│  │  ┌───────────────┐  ┌───────────────┐                              │ │
-│  │  │ Browse Cache  │  │ Request       │                              │ │
-│  │  │ (TTL: 5m)     │  │ Coalescing    │                              │ │
-│  │  └───────────────┘  └───────────────┘                              │ │
-│  └─────────────────────────────────────────────────────────────────────┘ │
-│                                                                           │
-├───────────────────────────────────────────────────────────────────────────┤
-│  Entity Platforms                                                         │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐            │
-│  │media_player│ │ remote     │ │ notify     │ │ button     │            │
-│  └────────────┘ └────────────┘ └────────────┘ └────────────┘            │
-│  ┌────────────┐ ┌────────────┐                                          │
-│  │ sensor     │ │binary_sensor│                                          │
-│  └────────────┘ └────────────┘                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                            Emby Server                                    │
-│  ┌────────────────────────┐    ┌────────────────────────┐               │
-│  │ REST API               │    │ WebSocket Server       │               │
-│  │ - /System/Info         │    │ - Sessions subscription│               │
-│  │ - /Sessions            │    │ - LibraryChanged      │               │
-│  │ - /Users/{id}/Items    │    │ - PlaybackStart/Stop  │               │
-│  │ - /Items/{id}          │    │ - UserDataChanged     │               │
-│  └────────────────────────┘    └────────────────────────┘               │
-└──────────────────────────────────────────────────────────────────────────┘
+```text
+Home Assistant config entry
+  EmbyClient
+    HTTP API
+    WebSocket connection
+    browse cache
+    request coalescer
+    metrics collector
+  session coordinator
+    media_player
+    remote
+    notify
+  server coordinator
+    server sensors
+    server binary sensors
+  library coordinator
+    library-count sensors
+  discovery coordinator for the selected user
+    discovery sensors
+    discovery image entities
+  image proxy view
+  media source provider
+  integration services
 ```
 
----
+The integration uses `entry.runtime_data` to store an `EmbyRuntimeData`
+instance. It holds the session, server, library, and per-user discovery
+coordinators.
 
-## Components
+## Setup lifecycle
 
-### Config Entry
+`async_setup_entry` performs the following work:
 
-Stores connection configuration:
+1. Create an `EmbyClient` with Home Assistant's shared `aiohttp` session.
+2. Validate authentication and read server information.
+3. Create the session, server, library, and discovery coordinators.
+4. Complete each coordinator's first refresh.
+5. Store the coordinators in config-entry runtime data.
+6. Register the Emby Server device before child entities are added.
+7. Register the image proxy and integration actions once per Home Assistant
+   instance.
+8. Forward setup to all entity platforms.
+9. Start the WebSocket connection when enabled.
+10. Register update and unload callbacks.
 
-| Field | Description |
-|-------|-------------|
-| `host` | Emby server hostname/IP |
-| `port` | Server port (default: 8096) |
-| `api_key` | Authentication key |
-| `ssl` | Use HTTPS |
-| `verify_ssl` | Validate SSL certificates |
-| `user_id` | Optional user context |
-
-### Options
-
-Runtime-adjustable settings:
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `scan_interval` | 10s | Session polling interval |
-| `enable_websocket` | true | Enable WebSocket |
-| `websocket_interval` | 1500ms | WS subscription rate |
-| `library_scan_interval` | 3600s | Library update interval |
-| `server_scan_interval` | 300s | Server status interval |
-| `ignored_devices` | [] | Hidden device names |
-| `ignore_web_players` | false | Hide browser sessions |
-
----
+Temporary connection failures raise `ConfigEntryNotReady`. Authentication
+failures raise `ConfigEntryAuthFailed` and use Home Assistant's
+reauthentication flow.
 
 ## Coordinators
 
-### Session Coordinator (`EmbyDataUpdateCoordinator`)
+| Coordinator | Data | Default refresh | Primary consumers |
+| --- | --- | --- | --- |
+| Session | Active Emby sessions keyed by stable device ID | 10 seconds, reduced when WebSocket is healthy | Media player, remote, notify |
+| Server | Version, tasks, plugins, recordings, status | 300 seconds | Server sensors and binary sensors |
+| Library | Media counts and scan state | 3600 seconds | Library sensors |
+| Discovery | User-specific media rows and counts | 900 seconds | Discovery sensors and image entities |
 
-**Purpose:** Track active playback sessions
+WebSocket messages can update or invalidate coordinator data before the next
+scheduled refresh.
 
-**Data Type:** `dict[str, EmbySession]`
+## Session model
 
-**Update Source:**
-- WebSocket (primary) - instant updates
-- HTTP polling (fallback) - configurable interval
+An `EmbySession` represents one connected client. The stable `device_id` is used
+for entity identity because Emby's `session_id` can change after reconnection.
 
-**Entities Created:**
-- `media_player` - One per session
-- `remote` - Navigation controls
-- `notify` - On-screen messages
+The session contains:
 
-### Server Coordinator (`EmbyServerCoordinator`)
+- Client, device, application, and user details
+- Remote-control capability and supported commands
+- Current `EmbyMediaItem`
+- Current `EmbyPlaybackState`
+- Playable media types
+- Queue item IDs and queue position
+- Last activity timestamp
 
-**Purpose:** Monitor server health and status
+An `EmbyMediaItem` keeps the item, series, season, and album identifiers needed
+for metadata, remote playback, and artwork fallback.
 
-**Data Type:** `EmbyServerData`
+## Entity platforms
 
-**Update Interval:** 5 minutes (configurable)
+| Platform | Source and behavior |
+| --- | --- |
+| `media_player` | One entity per known client device, backed by session state |
+| `remote` | Client navigation and remote commands |
+| `notify` | Session-specific on-screen messages |
+| `button` | Library refresh and scan actions |
+| `sensor` | Session, library, server, recording, plugin, and watch data |
+| `binary_sensor` | Server connection, update, restart, scan, and Live TV state |
+| `image` | Artwork for discovery rows |
 
-**Entities Created:**
-- `sensor.emby_version`
-- `sensor.emby_active_sessions`
-- `sensor.emby_running_tasks`
-- `binary_sensor.emby_connected`
-- `binary_sensor.emby_pending_restart`
-- `binary_sensor.emby_update_available`
+Media player state maps to `off` when the session is absent, `idle` when the
+session has no active item, `paused` when Emby reports a paused play state, and
+`playing` otherwise.
 
-### Library Coordinator (`EmbyLibraryCoordinator`)
+## Browse Media
 
-**Purpose:** Track library statistics
+`media_player.py` exposes the native Home Assistant Browse Media tree. Content
+IDs encode the Emby item or navigation type so a later browse or play request
+can reconstruct the target.
 
-**Data Type:** `EmbyLibraryData`
+The Movies root includes complete-library and server-sorted views in addition
+to filters. The complete and sorted views are capped at 1,000 items per
+response. Other branches load child items as the user navigates.
 
-**Update Interval:** 1 hour (configurable)
+Browse results use the local image proxy for thumbnails. They never include an
+Emby API key or a direct HTTP artwork URL.
 
-**Entities Created:**
-- `sensor.emby_movies`
-- `sensor.emby_series`
-- `sensor.emby_episodes`
-- `sensor.emby_songs`
-- `sensor.emby_albums`
-- `sensor.emby_artists`
-- `binary_sensor.emby_library_scan_active`
+The separate media source provider exposes Emby libraries through Home
+Assistant's Media panel.
 
-### Discovery Coordinator (`EmbyDiscoveryCoordinator`)
+## Remote playback
 
-**Purpose:** User-specific library discovery
+`async_play_media` resolves the selected item and target session, then:
 
-**Data Type:** `EmbyDiscoveryData`
+1. Request playback information for the selected Emby user.
+2. Select a media source that matches the configured direct-play or transcoding
+   settings.
+3. Build a `PlayRequest` containing the item, media source, controlling user,
+   and start position.
+4. Send the request to `/Sessions/{session_id}/Playing`.
 
-**Update Interval:** 30 minutes
+Emby Server 4.9 expects `ItemIds`, `StartPositionTicks`, and `PlayCommand` in
+the query string. A new browse selection uses `PlayNow`, so it replaces content
+already playing on that session.
 
-**Per-User Data:**
-- Latest media items
-- Resume points
-- Favorites count
-- Played count
-- Playlist count
+The client must have an active Emby session. The integration controls Emby, not
+the operating system application launcher.
 
----
+## Artwork delivery
 
-## EmbyClient
+The registered view has this route:
 
-The main API client for Emby server communication.
-
-### HTTP Methods
-
-| Method | Purpose |
-|--------|---------|
-| `_request` | GET requests |
-| `_request_post` | POST without response |
-| `_request_post_json` | POST with JSON response |
-| `_request_delete` | DELETE requests |
-
-All methods:
-- Include timing instrumentation
-- Handle authentication
-- Manage SSL context
-- Record metrics
-
-### WebSocket Client
-
-Manages real-time connection:
-
-```python
-class EmbyWebSocket:
-    # Connection management
-    async_connect()
-    async_disconnect()
-
-    # Subscriptions
-    async_subscribe_sessions(interval_ms=1500)
-
-    # Properties
-    connected: bool
-    reconnecting: bool
+```text
+/api/embymedia/image/{server_id}/{item_id}/{image_type}
 ```
 
-**Reconnection Strategy:**
-- Initial delay: 5 seconds
-- Maximum delay: 5 minutes
-- Exponential backoff between attempts
+The browser requests this same-origin route. Home Assistant resolves the
+coordinator for `server_id`, then the proxy fetches the image from Emby with the
+API key held only on the server side.
 
-### Caching
+Browse and discovery artwork streams through the proxy with bounded chunk
+sizes. Tagged images receive long cache headers. Untagged images receive a
+short cache lifetime.
 
-**Browse Cache:**
-- LRU eviction policy
-- 500 entry maximum
-- 5-minute TTL
-- Key generation via BLAKE2b hash
+Now-playing artwork has additional behavior:
 
-**Request Coalescing:**
-- In-flight request deduplication
-- asyncio.Lock for synchronization
-- Immediate cleanup on completion
+1. Episodes prefer `SeasonId`, then `SeriesId`, then the episode item.
+2. Audio can fall back to its album.
+3. The media player publishes the same proxy URL for `entity_picture` and
+   `entity_picture_local`, avoiding Home Assistant's generic double proxy.
+4. Player URLs request `layout=player`.
+5. The proxy embeds the unmodified raster artwork in a transparent 3:1 SVG
+   canvas with `preserveAspectRatio="xMidYMid meet"`.
 
-### Metrics Collector
+The canvas lets Home Assistant apply its normal cover-style layout while
+keeping the portrait poster inside the visible region of square and wide
+surfaces.
 
-Tracks API efficiency:
+## WebSocket lifecycle
 
-```python
-@dataclass
-class MetricsCollector:
-    # API call tracking
-    record_api_call(endpoint, duration_ms, error=False)
+The session coordinator owns the WebSocket connection. Session messages update
+media players, while library and user messages invalidate or refresh related
+coordinators.
 
-    # WebSocket tracking
-    record_websocket_message(type)
-    record_websocket_connect()
-    record_websocket_disconnect()
-    record_websocket_reconnect()
+The receive loop and health-check loop are created with the config entry's
+background-task API. This marks them as permanent runtime work, so Home
+Assistant does not wait for them during startup completion. Unload callbacks
+cancel the loops and close the connection.
 
-    # Coordinator tracking
-    record_coordinator_update(name, duration_ms, success=True)
+When WebSocket setup fails, the integration logs a warning and continues with
+polling. Reconnection uses bounded backoff.
 
-    # Export
-    to_diagnostics() -> dict
-```
+## Caching and request control
 
----
+The client includes:
 
-## Entity Platforms
+- A bounded Browse Media cache
+- Time-based expiry and library-change invalidation
+- Request coalescing for identical calls already in progress
+- API, coordinator, and WebSocket metrics included in diagnostics
 
-### Media Player (`media_player.py`)
+The artwork proxy streams ordinary images. The player-layout branch reads only
+the resized player image into memory so it can embed it in the SVG canvas.
 
-**Features:**
-- Play/pause/stop/seek
-- Volume control
-- Media browsing
-- Queue management
-- Shuffle/repeat
-- Voice assistant search
+## Actions and administration
 
-**State Mapping:**
+Integration actions are registered once and routed to the config entry selected
+by the target media player. They cover client messaging, general commands,
+watched state, favorites, playlists, collections, recordings, scheduled tasks,
+queue clearing, and server administration.
 
-| Condition | State |
-|-----------|-------|
-| No session | OFF |
-| Session, not playing | IDLE |
-| Playing, paused | PAUSED |
-| Playing | PLAYING |
+Standard `media_player`, `remote`, and `notify` actions are implemented through
+their normal Home Assistant entity platforms.
 
-### Remote (`remote.py`)
+## Security boundaries
 
-**Purpose:** Navigation commands for clients
+- The Emby API key stays in config-entry data and server-side requests.
+- Diagnostics redact authentication data.
+- Frontend state receives local artwork paths rather than authenticated Emby
+  URLs.
+- SSL verification is enabled by default.
+- The player canvas embeds only a small allowlist of raster content types.
 
-**Commands:**
-- `up`, `down`, `left`, `right`
-- `select`, `back`, `home`
-- `info`, `menu`
-- `play`, `pause`
+Users should still review diagnostics and logs before sharing them because
+device, user, library, and host names may be private.
 
-### Notify (`notify.py`)
+## Related documentation
 
-**Purpose:** Send on-screen messages
-
-**Target:** Session-specific notification
-
-### Button (`button.py`)
-
-**Purpose:** Server actions
-
-**Buttons:**
-- Refresh Library
-- Restart Server (if available)
-
-### Sensors (`sensor.py`)
-
-**Types:**
-- Library counts (movies, series, etc.)
-- Server info (version, sessions)
-- User statistics
-
-### Binary Sensors (`binary_sensor.py`)
-
-**Types:**
-- Connection status
-- Update availability
-- Library scan status
-- Pending restart
-
----
-
-## Data Models
-
-### EmbySession
-
-```python
-@dataclass
-class EmbySession:
-    session_id: str
-    device_id: str
-    device_name: str
-    client_name: str
-    app_version: str
-    user_id: str | None
-    user_name: str | None
-    now_playing: EmbyNowPlaying | None
-    play_state: EmbyPlayState | None
-    supports_remote_control: bool
-    supported_commands: list[str]
-```
-
-### EmbyNowPlaying
-
-```python
-@dataclass
-class EmbyNowPlaying:
-    item_id: str
-    name: str
-    series_name: str | None
-    season_name: str | None
-    episode_name: str | None
-    media_type: EmbyMediaType
-    duration_ticks: int | None
-    position_ticks: int | None
-    image_url: str | None
-```
-
-### EmbyPlayState
-
-```python
-@dataclass
-class EmbyPlayState:
-    is_paused: bool
-    is_muted: bool
-    volume_level: float | None
-    position_ticks: int | None
-    shuffle_mode: str | None
-    repeat_mode: str | None
-```
-
----
-
-## Initialization Flow
-
-```
-async_setup_entry(hass, entry)
-    │
-    ├── Create EmbyClient
-    │       └── Initialize caches, metrics
-    │
-    ├── Validate connection
-    │       └── GET /System/Info
-    │
-    ├── Create Coordinators
-    │       ├── SessionCoordinator
-    │       ├── ServerCoordinator
-    │       ├── LibraryCoordinator
-    │       └── DiscoveryCoordinator(s)
-    │
-    ├── Store in runtime_data
-    │
-    ├── Start WebSocket (if enabled)
-    │       └── Subscribe to sessions
-    │
-    ├── Initial coordinator refresh
-    │       └── Parallel async_gather()
-    │
-    └── Forward to platforms
-            ├── media_player
-            ├── remote
-            ├── notify
-            ├── button
-            ├── sensor
-            └── binary_sensor
-```
-
----
-
-## WebSocket Message Handling
-
-### Message Types
-
-| Type | Handler | Action |
-|------|---------|--------|
-| `Sessions` | Session coordinator | Update session data |
-| `LibraryChanged` | Library coordinator | Invalidate cache, refresh |
-| `PlaybackStart` | Session coordinator | Update now playing |
-| `PlaybackStop` | Session coordinator | Clear now playing |
-| `UserDataChanged` | Discovery coordinator | Refresh user data |
-
-### Connection Lifecycle
-
-```
-┌─────────────┐
-│ Disconnected │
-└──────┬──────┘
-       │ connect()
-       ▼
-┌─────────────┐
-│ Connecting  │
-└──────┬──────┘
-       │ success
-       ▼
-┌─────────────┐◄────────┐
-│ Connected   │         │
-└──────┬──────┘         │
-       │ disconnect     │ reconnect
-       ▼                │
-┌─────────────┐         │
-│ Reconnecting├─────────┘
-└─────────────┘
-```
-
----
-
-## Error Handling
-
-### Exception Hierarchy
-
-```
-EmbyError (base)
-├── EmbyConnectionError
-├── EmbyAuthenticationError
-├── EmbyNotFoundError
-├── EmbyServerError
-├── EmbyTimeoutError
-└── EmbySSLError
-```
-
-### Retry Strategy
-
-| Error Type | Retry | Backoff |
-|------------|-------|---------|
-| Connection | Yes | Exponential |
-| Authentication | No | N/A |
-| Not Found | No | N/A |
-| Server Error | Yes | Linear |
-| Timeout | Yes | Exponential |
-| SSL Error | No | N/A |
-
----
-
-## See Also
-
-- **[Efficiency](EFFICIENCY.md)** - Performance optimization details
-- **[Configuration](CONFIGURATION.md)** - User configuration options
-- **[Services](SERVICES.md)** - Available service calls
-- **[CLAUDE.md](../CLAUDE.md)** - Development guidelines
+- [Configuration](CONFIGURATION.md)
+- [Efficiency](EFFICIENCY.md)
+- [Services](SERVICES.md)
+- [Troubleshooting](TROUBLESHOOTING.md)

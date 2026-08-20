@@ -14,14 +14,14 @@ We use GitHub issue templates to help you provide the right information. Choose 
 
 | Template | Use When |
 |----------|----------|
-| [Bug Report](https://github.com/troykelly/homeassistant-emby/issues/new?template=1_bug_report.yml) | Something isn't working as expected |
-| [Feature Request](https://github.com/troykelly/homeassistant-emby/issues/new?template=2_feature_request.yml) | Suggesting new functionality |
-| [Connection Issue](https://github.com/troykelly/homeassistant-emby/issues/new?template=3_connection_issue.yml) | Setup, authentication, or network problems |
-| [Help/Question](https://github.com/troykelly/homeassistant-emby/issues/new?template=4_help_question.yml) | Need assistance or clarification |
-| [Compatibility](https://github.com/troykelly/homeassistant-emby/issues/new?template=5_compatibility_issue.yml) | Issues after HA or integration updates |
+| [Bug Report](https://github.com/gareth10203/homeassistant-emby/issues/new?template=1_bug_report.yml) | Something isn't working as expected |
+| [Feature Request](https://github.com/gareth10203/homeassistant-emby/issues/new?template=2_feature_request.yml) | Suggesting new functionality |
+| [Connection Issue](https://github.com/gareth10203/homeassistant-emby/issues/new?template=3_connection_issue.yml) | Setup, authentication, or network problems |
+| [Help/Question](https://github.com/gareth10203/homeassistant-emby/issues/new?template=4_help_question.yml) | Need assistance or clarification |
+| [Compatibility](https://github.com/gareth10203/homeassistant-emby/issues/new?template=5_compatibility_issue.yml) | Issues after HA or integration updates |
 
 **Before submitting:**
-1. Check [existing issues](https://github.com/troykelly/homeassistant-emby/issues) for duplicates
+1. Check [existing issues](https://github.com/gareth10203/homeassistant-emby/issues) for duplicates
 2. Review the [troubleshooting guide](docs/TROUBLESHOOTING.md)
 3. Gather required information (versions, logs, etc.)
 
@@ -46,7 +46,7 @@ See [Reporting Issues](docs/TROUBLESHOOTING.md#reporting-issues) for detailed in
 ### Clone and Install
 
 ```bash
-git clone https://github.com/troykelly/homeassistant-emby.git
+git clone https://github.com/gareth10203/homeassistant-emby.git
 cd homeassistant-emby
 
 # Create virtual environment
@@ -216,7 +216,7 @@ tests/
 
 ## Getting Help
 
-- Open a [discussion](https://github.com/troykelly/homeassistant-emby/discussions)
+- Open a [discussion](https://github.com/gareth10203/homeassistant-emby/discussions)
 - Ask in your PR if you're stuck
 - Review existing code for patterns
 
@@ -242,8 +242,8 @@ The `PROJECT_PAT` enables CI to automatically add issues to the project board. F
    - **Note:** `homeassistant-emby-project-access`
    - **Expiration:** 90 days (set reminder to rotate)
 4. Select scopes:
-   - ☑️ `repo` - Full control of private repositories
-   - ☑️ `project` - Full control of projects
+   - `repo` - Full control of private repositories
+   - `project` - Full control of projects
 5. Click **Generate token** and copy immediately
 6. Add to repository: Settings → Secrets → Actions → New repository secret
    - **Name:** `PROJECT_PAT`

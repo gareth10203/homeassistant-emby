@@ -7,9 +7,9 @@ body:
       value: |
         ## Before Submitting
 
-        - Search [existing issues](https://github.com/troykelly/homeassistant-emby/issues) to check if your bug has already been reported
+        - Search [existing issues](https://github.com/gareth10203/homeassistant-emby/issues) to check if your bug has already been reported
         - Make sure you're running a supported version of Home Assistant and the integration
-        - Check the [documentation](https://github.com/troykelly/homeassistant-emby#readme) for setup guidance
+        - Check the [documentation](https://github.com/gareth10203/homeassistant-emby#readme) for setup guidance
 
         ---
 

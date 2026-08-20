@@ -286,7 +286,7 @@ data:
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `message` | Yes | — | Message text |
+| `message` | Yes | None | Message text |
 | `header` | No | "" | Message header |
 | `timeout_ms` | No | 5000 | Display duration (1000-60000 ms) |
 
@@ -703,7 +703,7 @@ automation:
             - media_player.bedroom_tv
         data:
           message: "Movie night is starting!"
-          header: "🎬 Movie Night"
+          header: "Movie Night"
           timeout_ms: 8000
       # Start playing from queue
       - service: media_player.media_play
@@ -739,7 +739,9 @@ The Emby integration **does not support** the `announce` parameter for TTS (text
 
 **Workaround:** Use the `embymedia.send_message` or `notify.send_message` services to display text on screen instead of playing audio announcements.
 
-For more details, see the [Phase 14 documentation](../docs/phase-14-tasks.md#task-7-announcement-support-media_announce).
+Emby can display an on-screen message through `embymedia.send_message` or a
+notification entity, but it cannot play Home Assistant's generated TTS URL as
+an announcement.
 
 ---
 

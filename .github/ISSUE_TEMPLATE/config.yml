@@ -7,8 +7,8 @@ contact_links:
     url: https://emby.media/community/
     about: "For general Emby server questions and support"
   - name: Documentation
-    url: https://github.com/troykelly/homeassistant-emby#readme
+    url: https://github.com/gareth10203/homeassistant-emby#readme
     about: "Read the documentation before opening an issue"
   - name: Discussions
-    url: https://github.com/troykelly/homeassistant-emby/discussions
+    url: https://github.com/gareth10203/homeassistant-emby/discussions
     about: "Ask questions, share ideas, or discuss the integration"

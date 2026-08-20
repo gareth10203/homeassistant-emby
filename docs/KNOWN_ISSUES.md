@@ -1,65 +1,55 @@
-# Known Issues
+# Known limitations
 
-This document tracks known issues and planned fixes for the Home Assistant Emby integration.
+There are no confirmed integration defects listed for version `0.6.5`.
+The behaviors below are product or client limitations that can otherwise look
+like faults.
 
----
+## Playback clients are session based
 
-## Active Issues
+A client media player exists when Emby Server reports a session for that
+device. The integration cannot send an Emby playback request to a closed client
+or launch the Emby application through the device operating system.
 
-*No active issues.*
+Open Emby on the target before using Home Assistant controls. Apple TV remote
+playback is verified when the Emby app is open and connected.
 
----
+## Client command support varies
 
-## Resolved Issues
+Emby applications do not all implement the same remote commands. Basic
+playback is widely available, while directional navigation, notifications,
+queue operations, seeking, volume, and application-level commands can vary by
+platform.
 
-### 1. `via_device` Warning on Entity Registration (FIXED)
+Home Assistant reports the features exposed by the integration, but the target
+client has the final say on whether a command is applied.
 
-**Severity:** Warning (non-breaking)
+## Library views have a response limit
 
-**Introduced:** Phase 2
+All Movies and the two newest-first movie views return up to 1,000 items in a
+single Home Assistant browse response. This avoids overwhelming the frontend.
+Filtered views remain available for larger libraries.
 
-**Fixed In:** Phase 6
+## Player artwork uses a presentation canvas
 
-**Original Symptom:**
-```
-WARNING [homeassistant.helpers.frame] Detected that custom integration 'embymedia'
-calls `device_registry.async_get_or_create` referencing a non existing `via_device`
-('embymedia', '<server_id>'), with device info: {...}
-```
+Home Assistant crops media artwork differently in wide cards, square tiles,
+and the More Info dialog. Now-playing artwork is therefore served on a
+transparent 3:1 canvas. The cover itself is not altered, but opening the proxy
+URL directly shows transparent or browser-colored space around it.
 
-**Root Cause:**
-Media player entities reference the Emby server as their parent device via `via_device`, but the server device was not explicitly registered before the client entities were created.
+Browse and discovery artwork is not placed on this canvas.
 
-**Resolution:**
-Server device is now registered in `__init__.py:async_setup_entry()` before forwarding to platforms. The fix registers the Emby server as a device with manufacturer, model, name, and version before any entities are created.
+## Session and library timing
 
-**Location of Fix:**
-- `custom_components/embymedia/__init__.py` - lines 89-100
+WebSocket is the primary source of live changes. Polling is retained as a
+fallback and for periodic reconciliation. A disconnected WebSocket can make a
+state update arrive on the next polling cycle instead of immediately.
 
----
+## Platform-specific verification
 
-## Issue Template
+Apple TV is the primary playback target tested by this fork. Other Emby clients
+are expected to work through the same server API, but results depend on their
+remote-control implementation and network availability.
 
-When adding new issues, use this template:
-
-```markdown
-### N. Issue Title
-
-**Severity:** Critical / Warning / Minor
-
-**Introduced:** Phase N
-
-**Affected Versions:**
-
-**Symptom:**
-
-**Root Cause:**
-
-**Location:**
-
-**Impact:**
-
-**Planned Fix:**
-
-**Workaround:**
-```
+Report a reproducible problem at
+[github.com/gareth10203/homeassistant-emby/issues](https://github.com/gareth10203/homeassistant-emby/issues)
+with versions, logs, and redacted diagnostics.

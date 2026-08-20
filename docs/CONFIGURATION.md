@@ -1,250 +1,162 @@
-# Configuration Reference
+# Configuration
 
-Everything you need to connect and customize your Emby Media integration.
+The Home Assistant config flow is the normal way to connect Emby Media. YAML
+configuration is supported as an import path, but all ongoing settings are
+managed from the integration page.
 
----
+## Create an Emby API key
 
-## Quick Setup
+1. Open the Emby Server Dashboard.
+2. Go to **Settings**, then **Advanced**, then **API Keys**.
+3. Create a key named `Home Assistant`.
+4. Copy the key exactly and store it securely.
 
-### 1. Get Your API Key
+The key grants access to the Emby API. Do not place it in dashboard YAML,
+screenshots, issues, or exported diagnostics.
 
-1. Open Emby Server Dashboard: `http://your-server:8096`
-2. **Settings** (⚙️) → **Advanced** → **API Keys**
-3. Click **+ New API Key**
-4. Name it "Home Assistant" → **OK**
-5. **Copy the key** — you'll need it next
+## Add the integration
 
-> 💡 **Tip:** Store your API key securely. Anyone with this key can control your Emby server.
-
-### 2. Add the Integration
-
-1. **Settings** → **Devices & Services**
-2. Click **+ Add Integration**
-3. Search for **"Emby Media"**
-4. Enter your connection details (see table below)
-5. Click **Submit**
-
----
-
-## Connection Settings
+In Home Assistant, go to **Settings**, then **Devices & services**, select
+**Add integration**, and search for **Emby Media**.
 
 | Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| **Host** | ✓ | — | Emby server hostname or IP address |
-| **Port** | ✓ | 8096 | Server port number |
-| **Use SSL** | | false | Enable for HTTPS connections |
-| **API Key** | ✓ | — | API key from Emby dashboard |
-| **Verify SSL** | | true | Validate SSL certificate |
+| --- | --- | --- | --- |
+| Host | Yes | None | Emby hostname or IP address without a URL path |
+| Port | Yes | `8096` | Emby HTTP or HTTPS port |
+| Use SSL | Yes | Off | Connect with HTTPS |
+| API key | Yes | None | Dedicated key created in Emby Server |
+| Verify SSL | Yes | On | Validate the HTTPS certificate |
 
-### Connection Examples
+Use port `8920` when that is the HTTPS port configured by Emby. If a local
+server uses a self-signed certificate, SSL verification can be disabled, but a
+trusted certificate is preferable.
 
-<table>
-<tr>
-<td width="33%">
+The setup flow checks connectivity, authentication, and the minimum Emby Server
+version before creating an entry.
 
-**Local HTTP**
-```
-Host: 192.168.1.100
-Port: 8096
-Use SSL: ☐
-```
+## Select an Emby user
 
-</td>
-<td width="33%">
+The selected user controls user-specific library data, including watched
+state, favorites, Next Up, Continue Watching, Suggestions, and remote playback
+authorization.
 
-**Local HTTPS (self-signed)**
-```
-Host: emby.local
-Port: 8920
-Use SSL: ☑
-Verify SSL: ☐
-```
+Choose the regular Emby account that should represent Home Assistant activity.
+If more than one household profile needs separate data, add another Emby server
+entry only when a separate server connection is appropriate. A server cannot
+be added twice with the same unique server ID.
 
-</td>
-<td width="33%">
+## Change integration options
 
-**Remote with SSL**
-```
-Host: emby.example.com
-Port: 443
-Use SSL: ☑
-Verify SSL: ☑
-```
+Open **Settings**, then **Devices & services**, select **Emby Media**, and use
+**Configure**.
 
-</td>
-</tr>
-</table>
+### Updates and discovery
 
----
+| Option | Default | Allowed range | Description |
+| --- | --- | --- | --- |
+| Session scan interval | 10 seconds | 5 to 300 seconds | HTTP session refresh interval when polling is required |
+| Enable WebSocket | On | On or off | Receive near real-time session and library events |
+| WebSocket interval | 1500 ms | 500 to 10000 ms | Emby session subscription interval |
+| Enable discovery sensors | On | On or off | Create Next Up, Continue Watching, Recently Added, and Suggestions data |
+| Discovery scan interval | 900 seconds | 300 to 3600 seconds | Refresh user discovery data |
+| Library scan interval | 3600 seconds | 3600 to 86400 seconds | Refresh library statistics |
+| Server scan interval | 300 seconds | 300 to 3600 seconds | Refresh version, task, and server status data |
 
-## Options (Post-Setup)
+Keep WebSocket enabled for normal use. When the WebSocket connection is
+healthy, it carries immediate changes and polling acts as a fallback. The
+integration automatically reconnects after an interruption.
 
-Change these anytime: **Settings** → **Devices & Services** → **Emby Media** → **Configure**
-
-### Update Settings
-
-| Option | Default | Range | Description |
-|--------|---------|-------|-------------|
-| **Scan Interval** | 10 | 5-300s | How often to poll for session updates |
-| **Enable WebSocket** | ✓ | — | Real-time updates (recommended) |
-| **WebSocket Interval** | 1500 | 500-10000ms | Session subscription rate |
-| **Library Scan Interval** | 1 hour | 1-24h | How often to update library counts |
-| **Server Scan Interval** | 5 min | 5m-1h | How often to check server status |
-
-**About Scan Interval:**
-- Lower = more responsive, more server load
-- With WebSocket enabled, polling drops to 60s (WebSocket handles real-time)
-- Without WebSocket, this is your update frequency
-
-**About Library Scan Interval:**
-- Controls how often library statistics (movie count, etc.) are updated
-- Lower values increase server load with minimal benefit
-- Library changes via WebSocket trigger immediate refresh anyway
-
-**About Server Scan Interval:**
-- Controls how often server status (version, tasks) is checked
-- 5 minutes is sufficient for most use cases
-- Increase to 1 hour for low-power servers
-
-**About WebSocket:**
-- Near-instant state updates
-- Auto-reconnects if disconnected
-- Falls back to polling if unavailable
-- **Recommended:** Keep enabled
-
-> For detailed efficiency information, see **[Efficiency Best Practices](EFFICIENCY.md)**
-
-### Device Filtering
+### Client filtering
 
 | Option | Default | Description |
-|--------|---------|-------------|
-| **Ignored Devices** | — | Comma-separated list of device names to hide |
-| **Ignore Web Players** | ✗ | Hide all browser-based sessions |
+| --- | --- | --- |
+| Ignored devices | Empty | Comma-separated Emby device names that should not create client entities |
+| Ignore web players | Off | Exclude browser-based Emby sessions |
 
-**Example:**
-```
-Guest iPad, Kids Tablet, Web Player
-```
+Device filtering applies to Emby client names, not Home Assistant entity IDs.
+After changing filters, reload the integration or restart Home Assistant.
 
-### Entity Naming
+### Playback profile
 
 | Option | Default | Description |
-|--------|---------|-------------|
-| **Prefix Media Players** | ✓ | Add "Emby" prefix to media player names |
-| **Prefix Remote** | ✓ | Add "Emby" prefix to remote entity names |
-| **Prefix Notify** | ✓ | Add "Emby" prefix to notify entity names |
-| **Prefix Button** | ✓ | Add "Emby" prefix to button entity names |
+| --- | --- | --- |
+| Direct play | On | Prefer the source media when the target reports support |
+| Video container | `mp4` | Preferred container: `mp4`, `mkv`, or `webm` |
+| Transcoding profile | `universal` | Playback profile: `universal`, `chromecast`, `roku`, `appletv`, or `audio_only` |
+| Maximum video bitrate | Empty | Optional positive bitrate limit in kbps |
+| Maximum audio bitrate | Empty | Optional positive bitrate limit in kbps |
 
-**With prefix ON:** `media_player.emby_living_room_tv`
-**With prefix OFF:** `media_player.living_room_tv`
+The integration requests playback information from Emby before starting an
+item. It sends the chosen media source and controlling user to the target
+session. Actual direct-play and transcoding decisions remain subject to Emby
+Server and client capabilities.
 
-### Transcoding Options
+Use the `appletv` profile when Apple TV playback needs an explicit compatible
+profile. Start with `universal` unless a client requires different behavior.
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| **Direct Play** | ✓ | Try direct play before transcoding |
-| **Video Container** | mp4 | Container format: mp4, mkv, webm |
-| **Max Video Bitrate** | — | Limit video bitrate (kbps) |
-| **Max Audio Bitrate** | — | Limit audio bitrate (kbps) |
+### Entity names
 
-**Video Container:**
-- `mp4` — Most compatible, works everywhere
-- `mkv` — Better quality, less compatible
-- `webm` — Web-optimized, limited support
+The media player, remote, notification, and button platforms each have an
+option to prefix generated names with `Emby`. Prefixes are enabled by default.
 
-**Bitrate Guidelines:**
+Changing a prefix does not always rename an entity ID that Home Assistant has
+already stored in the entity registry. Rename an existing entity from its Home
+Assistant entity settings when necessary.
 
-| Quality | Video (kbps) | Audio (kbps) |
-|---------|-------------|--------------|
-| 1080p High | 10000-15000 | 320 |
-| 1080p Medium | 6000-8000 | 256 |
-| 720p | 4000-5000 | 192 |
-| Mobile | 2000-3000 | 128 |
+## Client session behavior
 
----
+Client media players represent live Emby sessions. The Emby app must be open
+and connected before the client can receive browse playback, navigation, or
+notification commands.
 
-## YAML Configuration (Optional)
+If content is already playing, select another item in **Browse media**. The new
+request uses `PlayNow` and replaces the current item. A separate stop action is
+not required.
 
-The integration supports YAML configuration for initial setup, which is then imported into the UI-based config entry. Most users should use the UI configuration above instead.
+Apple TV remote playback has been verified with Emby Server 4.9. Other clients
+depend on the remote-command support provided by their Emby application.
 
-> **Note:** YAML imports connection settings only. Advanced options (device filtering, transcoding, entity prefixes) must be configured through **Settings** → **Devices & Services** → **Emby Media** → **Configure** after setup.
+## Artwork and HTTPS
 
-### Basic YAML Setup
+Artwork is published through `/api/embymedia/image/...` on the Home Assistant
+origin. This design supports an HTTPS Home Assistant dashboard with an HTTP
+Emby server and prevents the Emby API key from appearing in frontend state.
 
-**configuration.yaml:**
+Episode playback prefers season artwork. The player URL includes
+`layout=player`, which keeps the complete portrait cover visible across square
+and wide Home Assistant layouts. Discovery and Browse Media images use their
+normal dimensions.
+
+No separate external Home Assistant URL is required for this image path.
+
+## YAML import
+
+UI setup is recommended. A minimal YAML entry can be imported into a config
+entry at startup:
+
 ```yaml
 embymedia:
   host: emby.local
+  port: 8096
+  ssl: false
+  verify_ssl: true
   api_key: !secret emby_api_key
-  port: 8096        # Optional, default: 8096
-  ssl: false        # Optional, default: false
-  verify_ssl: true  # Optional, default: true
 ```
 
-**secrets.yaml:**
-```yaml
-emby_api_key: your-api-key-here
-```
+The connection is represented as a Home Assistant config entry after import.
+Use the integration's **Configure** action for the remaining options.
 
-After restarting Home Assistant, the YAML configuration is imported as a config entry. You can then modify advanced options through the UI.
+## Reauthentication
 
----
+If the Emby API key is revoked or replaced, Home Assistant starts a
+reauthentication flow. Enter the new key when prompted. The existing config
+entry, selected user, devices, and entity registry are retained.
 
-## Multiple Emby Servers
+## Applying changes
 
-Add the integration multiple times for multiple servers:
+Most option changes reload the config entry. When Python files in
+`custom_components/embymedia` have changed, a full Home Assistant restart is
+required. A browser refresh alone cannot load new integration code.
 
-1. **Settings** → **Devices & Services** → **+ Add Integration**
-2. Search **"Emby Media"**
-3. Enter second server's details
-
-Each server creates its own set of entities.
-
----
-
-## User Selection
-
-If your Emby server has multiple users:
-
-1. During setup, you may be prompted to select a user
-2. This affects which libraries are visible
-3. User-specific restrictions apply
-
-If no user is selected, API key permissions apply.
-
----
-
-## Troubleshooting Configuration
-
-### "Connection Failed"
-
-1. ✓ Verify Emby is running: `http://your-server:8096`
-2. ✓ Check firewall allows the port
-3. ✓ Try IP address instead of hostname
-4. ✓ For HTTPS, try disabling "Verify SSL"
-
-### "Invalid API Key"
-
-1. ✓ Generate a **new** key in Emby Dashboard
-2. ✓ Check for extra spaces when pasting
-3. ✓ Verify key hasn't been revoked
-
-### "No Devices Found"
-
-1. ✓ Open Emby on at least one client device
-2. ✓ Ensure device supports remote control
-3. ✓ Check device isn't in "Ignored Devices" list
-
-### Changes Not Taking Effect
-
-- UI changes apply immediately
-- YAML changes require Home Assistant restart
-- Reload integration: **Emby Media** → ⋮ → **Reload**
-
----
-
-## Next Steps
-
-- **[Services](SERVICES.md)** — Available service calls
-- **[Automations](AUTOMATIONS.md)** — Ready-to-use automation examples
-- **[Troubleshooting](TROUBLESHOOTING.md)** — Detailed problem solving
+Continue with [Troubleshooting](TROUBLESHOOTING.md) if a server or client does
+not behave as expected.

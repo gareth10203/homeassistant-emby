@@ -1,529 +1,246 @@
-# Troubleshooting Guide
+# Troubleshooting
 
-This guide helps you resolve common issues with the Emby Media integration.
+Work from the symptom that matches your problem. Restart Home Assistant after
+replacing integration files, but do not repeatedly restart for a dashboard-only
+problem.
 
-## Table of Contents
+## Confirm the installed code
 
-- [Connection Issues](#connection-issues)
-- [Authentication Issues](#authentication-issues)
-- [Entity Issues](#entity-issues)
-- [Playback Issues](#playback-issues)
-- [WebSocket Issues](#websocket-issues)
-- [Media Browsing Issues](#media-browsing-issues)
-- [Performance Issues](#performance-issues)
-- [Getting Diagnostics](#getting-diagnostics)
-- [Reporting Issues](#reporting-issues)
+Check this file first:
 
----
+```text
+/config/custom_components/embymedia/manifest.json
+```
 
-## Connection Issues
+The `version` field must match the version you expect HACS or a manual copy to
+have installed. HACS can show a commit hash instead of a release number. That
+commit still contains a normal integration version in `manifest.json`.
 
-### "Connection Failed" During Setup
+If the files do not match the expected repository, redownload Emby Media from
+HACS and restart Home Assistant.
 
-**Symptoms:**
-- Error message "Cannot connect to Emby server"
-- Timeout during configuration
+## Setup cannot connect
 
-**Solutions:**
+### Cannot connect
 
-1. **Verify Emby is running:**
-   - Open `http://your-server:8096` in a browser
-   - You should see the Emby web interface
+1. Open `http://your-emby-server:8096` from another device on the same network.
+2. Confirm the host contains only a hostname or IP address, without `/web` or
+   another URL path.
+3. Confirm the configured port and SSL setting match Emby Server.
+4. Check that the Home Assistant host or container can reach the Emby network.
+5. Check firewall and container-network rules.
 
-2. **Check the host and port:**
-   - Use IP address instead of hostname (e.g., `192.168.1.100` instead of `emby.local`)
-   - Default ports: `8096` (HTTP), `8920` (HTTPS)
+When Home Assistant and Emby are in separate containers, a browser reaching
+Emby does not prove that the Home Assistant container can reach it.
 
-3. **Check firewall:**
-   - Ensure your firewall allows connections on the Emby port
-   - On Linux: `sudo ufw allow 8096`
+### Invalid API key
 
-4. **Check network connectivity:**
-   - From the HA host, run: `curl http://your-emby-server:8096/System/Info/Public`
-   - You should get a JSON response
+Create a new dedicated key in **Emby Server Dashboard**, then **Advanced**, then
+**API Keys**. Copy the complete value without spaces. Use Home Assistant's
+reauthentication flow when it appears.
 
-5. **For Docker users:**
-   - Ensure HA container can reach Emby container
-   - Use the Docker network IP or container name if on the same network
+Do not test by placing the API key in a dashboard URL or issue report.
 
-### "SSL Certificate Verification Failed"
+### SSL verification failed
 
-**Symptoms:**
-- Error during HTTPS connection
-- Works in browser but not in HA
+Confirm that the certificate is valid for the hostname used by Home Assistant.
+For a self-signed certificate on a trusted local network, disable **Verify SSL**
+for the Emby entry. Leave verification enabled for a public or CA-signed
+certificate.
 
-**Solutions:**
+## A client entity is missing
 
-1. **For self-signed certificates:**
-   - Disable "Verify SSL" in the integration configuration
-   - This is safe for local connections
+Emby client entities represent active server sessions.
 
-2. **For Let's Encrypt or other CA certificates:**
-   - Ensure the certificate is valid (not expired)
-   - Verify the hostname matches the certificate
+1. Open the Emby application on the target device.
+2. Confirm that it is signed in to the same Emby server.
+3. Play or browse something so the server creates a current session.
+4. Check **Ignored devices** and **Ignore web players** in the integration
+   options.
+5. Reload the Emby Media config entry.
 
-3. **Check certificate chain:**
-   - Some systems need the full certificate chain
-   - Install CA certificates: `sudo apt install ca-certificates`
+The integration cannot wake a client that has no Emby session. Apple TV must
+have the Emby application open before it can receive a remote playback command.
 
----
+Server sensors can remain available while client entities are absent.
 
-## Authentication Issues
+## Controls work only while Emby is open
 
-### "Invalid API Key"
+This is expected for clients that close their Emby session in the background.
+Home Assistant sends control requests to the session reported by Emby Server.
+It does not launch the application through the Apple TV operating system.
 
-**Symptoms:**
-- Authentication error during setup
-- Previously working integration stops working
+Keep Emby open on the target before using play, pause, browse playback, remote
+navigation, or on-screen notifications.
 
-**Solutions:**
+## Browse selection does not start playback
 
-1. **Generate a new API key:**
-   - Emby Dashboard → Settings → Advanced → API Keys
-   - Create a new key and try again
+1. Confirm the target player is still available and its Emby app is open.
+2. Try pause or volume control to confirm the session accepts commands.
+3. Select the item again from the target player's **Browse media** action.
+4. Check Home Assistant logs for an Emby HTTP status or playback-info error.
+5. Confirm Emby Server is at least version 4.9.1.90.
 
-2. **Check for whitespace:**
-   - Ensure no leading/trailing spaces when pasting the key
-   - Copy the key directly from Emby, don't retype it
+Playback requests require `ItemIds`, `StartPositionTicks`, and `PlayCommand` as
+query parameters on Emby Server 4.9. The integration also sends the controlling
+user and selected media source. Versions before the remote-play correction can
+return success without delivering the request to Apple TV.
 
-3. **Verify key hasn't been revoked:**
-   - Check the API Keys page in Emby
-   - Look for your key in the list
+To replace something that is already playing, select the new film or episode.
+The integration sends `PlayNow`; stopping the current item first is unnecessary.
 
-4. **Check key permissions:**
-   - API keys should have full access by default
-   - Try creating a key with admin user
+Apple TV is the primary verified target for this fork. Support on another Emby
+client depends on that client's remote-control implementation.
 
-### "Access Denied" or "Unauthorized"
+## Browse Media reports an unknown error
 
-**Symptoms:**
-- Setup succeeds but some features don't work
-- Library browsing shows empty
+An `Unknown error` message is the frontend's generic response to an exception
+inside a browse handler. Check Home Assistant logs at the same timestamp.
 
-**Solutions:**
+Useful checks:
 
-1. **Check user permissions:**
-   - If you selected a user during setup, that user's permissions apply
-   - Ensure the user has access to the libraries you want to browse
+1. Confirm the installed integration is current.
+2. Open another browse branch to determine whether the failure is limited to a
+   filter such as Movies by Year.
+3. Retry after the integration has completed its first library refresh.
+4. Confirm the selected Emby user can see the library in Emby itself.
+5. Download diagnostics before reloading the entry.
 
-2. **Verify library access:**
-   - Emby Dashboard → Users → [Your User] → Library Access
-   - Enable access to all required libraries
+Current movie browsing includes All Movies, Date Added newest first, Premiere
+Date newest first, A to Z, Year, Decade, Genre, Studio, Collections, People,
+and Tags. The Year branch and its container playback handler are supported in
+this fork.
 
----
+## Browse artwork is blank
 
-## Entity Issues
+Browse and discovery artwork should begin with:
 
-### No Entities Appearing
+```text
+/api/embymedia/image/
+```
 
-**Symptoms:**
-- Integration shows as configured but no entities
-- No media player entities visible
+Direct Emby image URLs can be blocked when Home Assistant is HTTPS and Emby is
+HTTP. They can also expose an API key in frontend state. Update the integration
+if a discovery sensor still publishes a direct Emby URL.
 
-**Solutions:**
+To test a proxy URL, prepend the Home Assistant address and open it in the same
+browser. Use one slash between the port and `api`:
 
-1. **Open Emby on a client device:**
-   - Media players only appear when clients are connected
-   - Open Emby on your TV, phone, or another device
+```text
+https://home-assistant.example:8123/api/embymedia/image/...
+```
 
-2. **Check if device supports remote control:**
-   - Not all Emby clients support remote control
-   - Web browsers and official apps generally work
+A double slash before `api` can produce a false 404 result.
 
-3. **Verify device isn't ignored:**
-   - Check integration options for "Ignored Devices"
-   - Remove the device from the ignored list if present
+## Now-playing artwork is blank
 
-4. **Wait for the first poll:**
-   - It can take up to the scan interval (default 10 seconds) for entities to appear
+Open **Developer tools**, then **States**, and inspect the Emby media player.
+Both of these attributes should use the Emby image endpoint:
 
-5. **Check Home Assistant logs:**
-   - Look for errors related to `embymedia`
-   - Go to Settings → System → Logs
+```text
+entity_picture: /api/embymedia/image/...
+entity_picture_local: /api/embymedia/image/...
+```
 
-### Entities Show as "Unavailable"
+If `entity_picture_local` begins with `/api/media_player_proxy/`, the installed
+version is double-proxying a relative image URL. That generic Home Assistant
+proxy can return HTTP 500. Install the current fork and restart Home Assistant.
 
-**Symptoms:**
-- Media player shows unavailable
-- Entity appears but can't be controlled
+For player artwork, the URL should include:
 
-**Solutions:**
+```text
+maxWidth=600&maxHeight=900&layout=player
+```
 
-1. **Client disconnected:**
-   - The Emby client may have closed
-   - Reopen Emby on the device
+The player layout places the original cover on a transparent responsive canvas.
+This prevents Home Assistant's media card, Overview tile, and More Info dialog
+from cropping a portrait season cover.
 
-2. **Session timeout:**
-   - Long-idle sessions may be closed by Emby
-   - Interact with Emby on the device to restore the session
+If the direct URL works but an old crop remains, hard-refresh the browser after
+restarting Home Assistant. The `layout=player` URL is distinct from the old
+cached image URL.
 
-3. **Server restart:**
-   - After Emby server restart, clients need to reconnect
-   - Wait a few minutes for sessions to re-establish
+## The wrong episode artwork is shown
 
-4. **Check coordinator status:**
-   - The integration may have lost connection
-   - Reload the integration: Settings → Devices & Services → Emby Media → ⋮ → Reload
+Episode playback uses the current season's Primary image when Emby includes a
+`SeasonId`. If it is missing, the integration uses the series Primary image,
+then the episode image.
 
-### Entity Names Are Strange
+Check `media_series_title`, `media_season`, `media_episode`, and
+`entity_picture` in Developer Tools. If the title data is correct but the image
+belongs to another season, refresh metadata for that season in Emby Server.
 
-**Symptoms:**
-- Entity names don't match device names
-- Multiple entities for same device
+## HACS cannot download the repository
 
-**Solutions:**
+For an error such as `Could not download, see log for details`:
 
-1. **Device names come from Emby:**
-   - The entity name is based on the device name in Emby
-   - Rename the device in the Emby client settings
+1. Confirm the custom repository is
+   `https://github.com/gareth10203/homeassistant-emby`.
+2. Confirm the repository is public and available in a browser.
+3. Confirm the requested commit has been pushed to GitHub.
+4. Remove and re-add the custom repository in HACS.
+5. Reload HACS, then retry the download.
+6. Read the HACS log entry for the underlying HTTP or archive error.
 
-2. **Duplicate entities:**
-   - May occur if device ID changes
-   - Delete old entities from Entity Registry
+A local commit cannot be downloaded by HACS until it has been pushed to the
+repository.
 
----
+## Home Assistant startup takes several minutes
 
-## Playback Issues
+Current versions register the permanent Emby WebSocket receive loop and health
+check as config-entry background tasks. They should not hold Home Assistant in
+the startup stage.
 
-### Playback Commands Don't Work
+If startup still pauses for about five minutes:
 
-**Symptoms:**
-- Play/Pause/Stop don't respond
-- Volume changes don't apply
+1. Confirm the installed version and restart once.
+2. Check logs for Emby tasks named `websocket_receive` or
+   `websocket_health_check` in a bootstrap timeout.
+3. Redownload the current integration if those tasks still block setup.
+4. Check connectivity to Emby Server because repeated connection failures can
+   produce separate retry messages.
 
-**Solutions:**
+## State updates are delayed
 
-1. **Check client capabilities:**
-   - Not all clients support all commands
-   - Check `supported_features` attribute of the entity
+Check the integration options and logs:
 
-2. **Verify active session:**
-   - Commands only work on active sessions
-   - Ensure Emby is open on the device
+1. Keep WebSocket enabled for normal use.
+2. Confirm a successful WebSocket connection appears after setup.
+3. Check that a reverse proxy between Home Assistant and Emby is not involved
+   in the server-side connection. Home Assistant connects directly to Emby.
+4. Increase polling frequency only after resolving WebSocket problems.
 
-3. **Check API command:**
-   - Some commands may not be supported by certain Emby versions
-   - Try using the Emby web interface to verify functionality
+The integration falls back to HTTP polling after a WebSocket interruption and
+reconnects automatically.
 
-### Seeking Doesn't Work
+## Download diagnostics
 
-**Symptoms:**
-- Seek bar moves but position doesn't change
-- Position resets after seeking
+1. Open **Settings**, then **Devices & services**.
+2. Select **Emby Media**.
+3. Open the entry menu and select **Download diagnostics**.
 
-**Solutions:**
+Diagnostics are designed to redact authentication fields, but review the file
+before sharing it. Remove hostnames, usernames, library names, or client names
+when they are private.
 
-1. **Client limitation:**
-   - Some clients don't support remote seeking
-   - Try a different client (web browser usually works)
+## Enable debug logging
 
-2. **File format issue:**
-   - Some file formats don't support seeking well
-   - This is typically a client/transcoding issue
-
-### Media Position Not Updating
-
-**Symptoms:**
-- Position stays at 0
-- Position doesn't update during playback
-
-**Solutions:**
-
-1. **Enable WebSocket:**
-   - Position updates more frequently with WebSocket
-   - Enable in integration options
-
-2. **Reduce scan interval:**
-   - Set to 5 seconds for more frequent updates
-   - Note: increases server load
-
----
-
-## WebSocket Issues
-
-### WebSocket Won't Connect
-
-**Symptoms:**
-- Log shows WebSocket connection failures
-- Real-time updates not working
-
-**Solutions:**
-
-1. **Check WebSocket URL:**
-   - WebSocket uses `ws://` or `wss://` protocol
-   - Ensure Emby's WebSocket is enabled
-
-2. **Proxy interference:**
-   - Reverse proxies may block WebSocket
-   - Configure proxy to allow WebSocket connections
-   - For nginx: add `proxy_http_version 1.1;` and `proxy_set_header Upgrade $http_upgrade;`
-
-3. **Firewall issues:**
-   - WebSocket uses the same port as HTTP
-   - Ensure port is fully open (not just HTTP filtered)
-
-### Frequent Disconnections
-
-**Symptoms:**
-- WebSocket connects but drops frequently
-- States jump between values
-
-**Solutions:**
-
-1. **Network stability:**
-   - Check for network issues between HA and Emby
-   - Try wired connection instead of WiFi
-
-2. **Server resources:**
-   - Emby server may be overloaded
-   - Check Emby server CPU/memory usage
-
-3. **Disable WebSocket:**
-   - If unstable, disable WebSocket in options
-   - Polling will be used instead (slightly slower updates)
-
-4. **Check reconnection:**
-   - Integration automatically reconnects with exponential backoff
-   - Check logs for reconnection attempts
-
----
-
-## Media Browsing Issues
-
-### Library Shows Empty
-
-**Symptoms:**
-- Browse Media shows no libraries
-- Some libraries missing
-
-**Solutions:**
-
-1. **Check API key permissions:**
-   - API key should have access to all libraries
-   - Try recreating the key
-
-2. **Verify library visibility:**
-   - Emby Dashboard → Libraries
-   - Ensure libraries are not hidden
-
-3. **User restrictions:**
-   - If using user selection, check user's library access
-   - Emby Dashboard → Users → [User] → Library Access
-
-4. **Cache issue:**
-   - Browse results are cached
-   - Wait a few minutes for cache to refresh
-
-### Media Won't Play from Browse
-
-**Symptoms:**
-- Can browse but "Play" does nothing
-- Error when trying to play
-
-**Solutions:**
-
-1. **Check client capabilities:**
-   - The selected client may not support the media type
-   - Try a different client
-
-2. **Transcoding required:**
-   - Some files need transcoding
-   - Enable transcoding in Emby settings
-
-3. **Direct play issues:**
-   - Disable "Direct Play" in integration options
-   - This forces transcoding which may help compatibility
-
----
-
-## Performance Issues
-
-### High CPU/Memory Usage
-
-**Symptoms:**
-- Home Assistant using excessive resources
-- Slow dashboard
-
-**Solutions:**
-
-1. **Increase scan interval:**
-   - Default 10 seconds may be too frequent
-   - Try 30 or 60 seconds
-
-2. **Enable WebSocket:**
-   - WebSocket reduces polling load
-   - More efficient for real-time updates
-
-3. **Check entity count:**
-   - Many Emby sessions = many entities
-   - Use "Ignored Devices" to filter unnecessary devices
-
-### Slow Media Browsing
-
-**Symptoms:**
-- Browse Media takes long to load
-- Timeouts when browsing large libraries
-
-**Solutions:**
-
-1. **Browse cache:**
-   - Results are cached to improve performance
-   - First load will be slower
-
-2. **Large libraries:**
-   - Use category filters (A-Z, Genre, Year)
-   - Avoid browsing root of very large libraries
-
-3. **Network speed:**
-   - Slow network between HA and Emby affects browsing
-   - Check network connectivity
-
-### Emby Server Becomes Sluggish
-
-**Symptoms:**
-- Emby server response times increase
-- Server CPU spikes when HA is running
-- API rate limit warnings
-
-**Solutions:**
-
-1. **Check WebSocket status:**
-   - Download diagnostics (see below)
-   - Look for `"websocket_enabled": true`
-   - If WebSocket is disconnected, the integration falls back to polling
-
-2. **Increase polling intervals:**
-   - Go to **Settings** → **Devices & Services** → **Emby Media** → **Configure**
-   - Increase **Library Scan Interval** to 12 or 24 hours
-   - Increase **Server Scan Interval** to 30 minutes or 1 hour
-
-3. **Check for automation loops:**
-   - Automations that trigger on Emby state changes may cause feedback
-   - Add conditions to prevent rapid-fire triggers
-
-4. **Review efficiency metrics:**
-   - Download diagnostics
-   - Check `efficiency_metrics.api_calls` for high-frequency endpoints
-   - Check `efficiency_metrics.websocket.messages_received` is non-zero
-
-5. **Single integration per server:**
-   - Don't add the same Emby server multiple times
-   - Use user selection for multi-user scenarios
-
-> For detailed efficiency information, see **[Efficiency Best Practices](EFFICIENCY.md)**
-
----
-
-## Getting Diagnostics
-
-When reporting issues, include diagnostic information:
-
-### Download Diagnostics
-
-1. Go to **Settings** → **Devices & Services**
-2. Find **Emby Media**
-3. Click the three dots (⋮)
-4. Click **Download Diagnostics**
-
-This generates a JSON file containing:
-- Integration configuration (API keys are redacted)
-- Server information
-- Connection status
-- Active sessions
-- Cache statistics
-- Efficiency metrics (API call counts, response times, errors)
-
-### Check Logs
-
-1. Go to **Settings** → **System** → **Logs**
-2. Filter for `embymedia` entries
-3. Look for ERROR or WARNING messages
-
-### Enable Debug Logging
-
-Add to `configuration.yaml`:
+Add this temporarily to `configuration.yaml`:
 
 ```yaml
 logger:
-  default: info
   logs:
     custom_components.embymedia: debug
 ```
 
-Restart Home Assistant and reproduce the issue.
+Restart Home Assistant, reproduce the problem once, collect the relevant log
+section, then remove or lower debug logging to avoid unnecessary log volume.
 
----
+## Report a problem
 
-## Reporting Issues
+Search the fork's existing issues, then open a new issue at
+[github.com/gareth10203/homeassistant-emby/issues](https://github.com/gareth10203/homeassistant-emby/issues).
 
-### Before Opening an Issue
-
-1. **Search existing issues**: [GitHub Issues](https://github.com/troykelly/homeassistant-emby/issues)
-2. **Check discussions**: [GitHub Discussions](https://github.com/troykelly/homeassistant-emby/discussions)
-3. **Review this troubleshooting guide**
-
-### Choose the Right Template
-
-When opening an issue, use the appropriate template:
-
-| Issue Type | Template | Use When |
-|------------|----------|----------|
-| **[Bug Report](https://github.com/troykelly/homeassistant-emby/issues/new?template=1_bug_report.yml)** | Something isn't working | Features broke or behave unexpectedly |
-| **[Feature Request](https://github.com/troykelly/homeassistant-emby/issues/new?template=2_feature_request.yml)** | New functionality | Suggesting improvements or new features |
-| **[Connection Issue](https://github.com/troykelly/homeassistant-emby/issues/new?template=3_connection_issue.yml)** | Can't connect | Setup problems, authentication, network issues |
-| **[Help/Question](https://github.com/troykelly/homeassistant-emby/issues/new?template=4_help_question.yml)** | Need assistance | How-to questions, clarifications |
-| **[Compatibility](https://github.com/troykelly/homeassistant-emby/issues/new?template=5_compatibility_issue.yml)** | Broke after update | HA updates, HACS issues, conflicts |
-
-### Required Information
-
-For **bug reports** and **connection issues**, you'll need:
-
-- [ ] **Integration version** (Settings → Devices & Services → Emby Media → ⋮ → Integration info)
-- [ ] **Home Assistant version** (Settings → About)
-- [ ] **Emby Server version** (Emby Dashboard → About)
-- [ ] **Debug logs** (see [Enable Debug Logging](#enable-debug-logging) above)
-- [ ] **Diagnostics file** (see [Download Diagnostics](#download-diagnostics) above)
-- [ ] **Steps to reproduce** the issue
-
-### Getting Debug Logs
-
-**Method 1: Via UI (Easiest)**
-
-1. Settings → Devices & Services → Emby Media
-2. Click ⋮ → **Enable debug logging**
-3. Reproduce your issue
-4. Click ⋮ → **Disable debug logging** (downloads log file)
-
-**Method 2: Via configuration.yaml**
-
-```yaml
-logger:
-  default: info
-  logs:
-    custom_components.embymedia: debug
-```
-
-Open issues at: https://github.com/troykelly/homeassistant-emby/issues/new/choose
-
----
-
-## Common Error Messages
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Cannot connect to host` | Network/firewall issue | Check connectivity, firewall rules |
-| `401 Unauthorized` | Invalid API key | Regenerate API key |
-| `403 Forbidden` | Permission denied | Check user permissions |
-| `Connection reset` | Server closed connection | Check server status |
-| `Session not found` | Client disconnected | Reopen Emby on device |
-| `WebSocket closed` | Connection dropped | Check network stability |
-
----
-
-## Still Having Issues?
-
-If this guide didn't solve your problem:
-
-1. Search [existing issues](https://github.com/troykelly/homeassistant-emby/issues)
-2. Check [Home Assistant Community](https://community.home-assistant.io/)
-3. [Open a new issue](https://github.com/troykelly/homeassistant-emby/issues/new) with full details
+Include versions, the affected client platform, a concise reproduction, logs,
+and redacted diagnostics. Never include an Emby API key, Home Assistant bearer
+token, signed entity-picture URL, or private SSH key.

@@ -1,118 +1,78 @@
-# 📚 Emby Media Documentation
+# Emby Media documentation
 
-Welcome to the Emby Media for Home Assistant documentation.
+These guides describe the installed integration as a finished Home Assistant
+product. Start with installation and configuration, then use the workflow and
+reference documents as needed.
 
----
+## Start here
 
-## 🚀 Getting Started
+| Guide | Use it for |
+| --- | --- |
+| [Installation](INSTALLATION.md) | Installing through HACS, changing from the upstream repository, manual installation, and updates |
+| [Configuration](CONFIGURATION.md) | Connecting a server, selecting an Emby user, filtering clients, and tuning playback or refresh behavior |
+| [Troubleshooting](TROUBLESHOOTING.md) | Resolving connection, playback, browsing, artwork, startup, and HACS problems |
 
-| Guide | Description |
-|-------|-------------|
-| **[Installation](INSTALLATION.md)** | Download, install, and verify the integration |
-| **[Configuration](CONFIGURATION.md)** | Connect to Emby and customize settings |
+## Everyday use
 
----
+| Guide | Use it for |
+| --- | --- |
+| [Automation examples](AUTOMATIONS.md) | Playback-aware lighting, notifications, client control, and device triggers |
+| [Services reference](SERVICES.md) | Standard media actions and every `embymedia` action |
+| [Known limitations](KNOWN_ISSUES.md) | Client-session requirements and platform-dependent behavior |
 
-## 📖 User Guides
+## Technical reference
 
-| Guide | Description |
-|-------|-------------|
-| **[Automations](AUTOMATIONS.md)** | 50+ ready-to-use automation examples |
-| **[Services](SERVICES.md)** | Complete reference for all service calls |
-| **[Troubleshooting](TROUBLESHOOTING.md)** | Solutions for common issues |
+| Guide | Use it for |
+| --- | --- |
+| [Architecture](ARCHITECTURE.md) | Config entries, coordinators, WebSocket updates, entities, and API flow |
+| [Efficiency](EFFICIENCY.md) | Polling, caching, request coalescing, and performance options |
+| [Integration comparison](COMPARISON_MATRIX.md) | Neutral feature-level comparison with the Home Assistant core integrations |
+| [Changelog](../CHANGELOG.md) | Released and unreleased changes |
+| [Contributing](../CONTRIBUTING.md) | Local setup, checks, and contribution process |
 
----
+## Core workflow
 
-## 🏗️ Technical Documentation
+1. Install `gareth10203/homeassistant-emby` as a HACS custom integration.
+2. Add Emby Media from **Settings**, then **Devices & services**.
+3. Select an Emby user for library and discovery data.
+4. Open the Emby application on the target playback device.
+5. Use the target media player's **Browse media** action to select content.
 
-| Guide | Description |
-|-------|-------------|
-| **[Architecture](ARCHITECTURE.md)** | System design and component overview |
-| **[Efficiency](EFFICIENCY.md)** | Performance best practices and tuning |
+Selecting a new item replaces content that is already playing. The target must
+have an active Emby session so the server has somewhere to deliver the command.
 
----
+## Browse and artwork behavior
 
-## 🔧 Quick Reference
+The Movies browser includes All Movies, Date Added newest first, Premiere Date
+newest first, A to Z, Year, Decade, Genre, Studio, Collections, People, and
+Tags. Television, music, playlists, collections, and Live TV have their own
+navigation trees.
 
-### Entities Created
+Artwork is served through Home Assistant rather than directly from Emby. This
+prevents HTTPS mixed-content failures and keeps the Emby API key out of browser
+state. Episode playback prefers the season cover, then the series cover. A
+responsive player layout keeps the full portrait image visible in media cards,
+entity tiles, and the More Info dialog.
 
-| Platform | Entity Pattern | Purpose |
-|----------|---------------|---------|
-| `media_player` | `media_player.emby_*` | Playback control |
-| `remote` | `remote.emby_*` | Navigation commands |
-| `notify` | `notify.emby_*` | On-screen messages |
-| `button` | `button.emby_*` | Server actions (refresh library, run library scan) |
-| `sensor` | `sensor.emby_*` | Library & server stats |
-| `binary_sensor` | `binary_sensor.emby_*` | Server status |
-| `image` | `image.emby_*` | Discovery cover art |
+## Entity overview
 
-### Key Services
+| Platform | Typical use |
+| --- | --- |
+| `media_player` | Browse, start content, and control active Emby clients |
+| `remote` | Navigate a compatible Emby client |
+| `notify` | Show a message on a client |
+| `button` | Refresh or scan the server library |
+| `sensor` | Read library, session, recording, plugin, and server statistics |
+| `binary_sensor` | Read server, update, scan, restart, and Live TV state |
+| `image` | Display Next Up, Continue Watching, Recently Added, and Suggestions artwork |
 
-| Service | Purpose |
-|---------|---------|
-| `embymedia.send_message` | Display on-screen message |
-| `embymedia.send_command` | Remote navigation |
-| `embymedia.mark_played` | Mark as watched |
-| `embymedia.add_favorite` | Add to favorites |
-| `embymedia.play_instant_mix` | Start radio mix |
-| `embymedia.create_playlist` | Create playlist |
-| `embymedia.schedule_recording` | DVR recording |
+## Getting help
 
-[Full services reference →](SERVICES.md)
+Read [Troubleshooting](TROUBLESHOOTING.md) before opening an issue. Download
+integration diagnostics and remove any private information before sharing.
+Never publish API keys, access tokens, or private SSH keys.
 
-### Sensors Available
+Issues for this fork are handled at
+[github.com/gareth10203/homeassistant-emby/issues](https://github.com/gareth10203/homeassistant-emby/issues).
 
-**Server Health:**
-- `binary_sensor.*_connected` — Server reachable?
-- `binary_sensor.*_pending_restart` — Restart needed?
-- `binary_sensor.*_update_available` — Update ready?
-- `binary_sensor.*_library_scan_active` — Scan running?
-
-**Library Counts:**
-- `sensor.*_movies` / `sensor.*_tv_shows` / `sensor.*_episodes`
-- `sensor.*_songs` / `sensor.*_albums` / `sensor.*_artists`
-
-**Activity:**
-- `sensor.*_active_sessions` — Connected clients
-- `sensor.*_plugins` — Installed plugins
-- `sensor.*_last_activity` — Recent activity
-
----
-
-## 📂 Document Index
-
-### User Documentation
-- [INSTALLATION.md](INSTALLATION.md) — Installation guide
-- [CONFIGURATION.md](CONFIGURATION.md) — Configuration reference
-- [SERVICES.md](SERVICES.md) — Services reference
-- [AUTOMATIONS.md](AUTOMATIONS.md) — Automation examples
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Problem solving
-
-### Technical Documentation
-- [ARCHITECTURE.md](ARCHITECTURE.md) — System design overview
-- [EFFICIENCY.md](EFFICIENCY.md) — Performance best practices
-
-### Project Files
-- [CHANGELOG.md](../CHANGELOG.md) — Version history
-- [CONTRIBUTING.md](../CONTRIBUTING.md) — Contribution guidelines
-- [LICENSE](../LICENSE) — MIT License
-
-### Development (Internal)
-- [roadmap.md](roadmap.md) — Development phases
-- `phase-*-tasks.md` — Phase implementation details
-- [KNOWN_ISSUES.md](KNOWN_ISSUES.md) — Known issues tracking
-
----
-
-## ❓ Need Help?
-
-1. **Search this documentation** — Most answers are here
-2. **Check [Troubleshooting](TROUBLESHOOTING.md)** — Common issues solved
-3. **Search [GitHub Issues](https://github.com/troykelly/homeassistant-emby/issues)** — Someone may have asked
-4. **[Open an Issue](https://github.com/troykelly/homeassistant-emby/issues/new)** — We're here to help
-
----
-
-<p align="center">
-  <a href="../README.md">← Back to Main README</a>
-</p>
+Return to the [main README](../README.md).

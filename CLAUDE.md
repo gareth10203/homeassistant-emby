@@ -16,7 +16,7 @@ This is a custom Home Assistant integration that provides media player entities 
 |------|-------|
 | Project URL | https://github.com/users/troykelly/projects/3 |
 | Project Name | Home Assistant Emby Component |
-| Repository | troykelly/homeassistant-emby |
+| Repository | gareth10203/homeassistant-emby |
 
 ### The Iron Law
 

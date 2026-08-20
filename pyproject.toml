@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "homeassistant-emby"
-version = "0.4.1"
+version = "0.6.5"
 description = "Home Assistant integration for Emby Media Server"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -22,9 +22,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/troykelly/homeassistant-emby"
-Repository = "https://github.com/troykelly/homeassistant-emby"
-Issues = "https://github.com/troykelly/homeassistant-emby/issues"
+Homepage = "https://github.com/gareth10203/homeassistant-emby"
+Repository = "https://github.com/gareth10203/homeassistant-emby"
+Issues = "https://github.com/gareth10203/homeassistant-emby/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -16,7 +16,7 @@ body:
         **Before submitting:**
         - Verify your Emby server is accessible from your network
         - Check that your API key is valid (test in a browser: `http://your-emby-server:8096/emby/System/Info?api_key=YOUR_KEY`)
-        - Review the [setup documentation](https://github.com/troykelly/homeassistant-emby#readme)
+        - Review the [setup documentation](https://github.com/gareth10203/homeassistant-emby#readme)
 
         ---
 

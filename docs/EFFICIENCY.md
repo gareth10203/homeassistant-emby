@@ -1,329 +1,132 @@
-# Efficiency Best Practices
+# Efficiency and tuning
 
-This document explains the efficiency architecture of the Emby Media integration and provides guidelines for contributors and users.
+The default settings are suitable for most Emby servers. WebSocket updates,
+bounded caches, request coalescing, and separate coordinator intervals reduce
+unnecessary API traffic without making playback state stale.
 
----
+## Update sources
 
-## Overview
+| Data | Default interval | Event support |
+| --- | --- | --- |
+| Client sessions | 10 seconds when polling is required | WebSocket session and playback messages |
+| Server status | 300 seconds | Periodic reconciliation |
+| Library counts | 3600 seconds | Library-change invalidation |
+| Discovery data | 900 seconds | User-data and library invalidation |
 
-The Emby Media integration is designed with efficiency as a core principle. It minimizes API calls to the Emby server through several strategies:
+When the WebSocket connection is healthy, it is the primary source of session
+changes. HTTP polling remains as a slower consistency check and as the fallback
+after a disconnect.
 
-1. **WebSocket-first architecture** - Real-time updates without polling
-2. **Multi-layer caching** - Reduce redundant API requests
-3. **Request coalescing** - Deduplicate concurrent identical requests
-4. **Adaptive polling** - Adjust intervals based on connection state
-5. **Batch operations** - Consolidate multiple API calls
+## WebSocket behavior
 
----
+Keep WebSocket enabled unless the Emby endpoint cannot support it. It provides
+the lowest-latency state changes with less repetitive HTTP traffic.
 
-## Architecture
+The receive and health-check loops are registered as config-entry background
+tasks. They remain active for the lifetime of the integration without delaying
+Home Assistant startup completion. Unloading the config entry cancels them.
 
-### Communication Flow
+After a disconnect, the integration continues polling and reconnects with
+bounded backoff.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Home Assistant                               │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐  │
-│  │ Session         │    │ Library         │    │ Discovery       │  │
-│  │ Coordinator     │    │ Coordinator     │    │ Coordinator     │  │
-│  └────────┬────────┘    └────────┬────────┘    └────────┬────────┘  │
-│           │                      │                      │           │
-│           ▼                      ▼                      ▼           │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │                       EmbyClient                             │    │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │    │
-│  │  │ Browse      │  │ Request     │  │ Metrics             │  │    │
-│  │  │ Cache       │  │ Coalescing  │  │ Collector           │  │    │
-│  │  └─────────────┘  └─────────────┘  └─────────────────────┘  │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│           │                                                         │
-│           ▼                                                         │
-│  ┌─────────────────┐                    ┌─────────────────────┐    │
-│  │ HTTP API        │◄──────────────────►│ WebSocket           │    │
-│  │ (REST)          │                    │ (Real-time)         │    │
-│  └────────┬────────┘                    └──────────┬──────────┘    │
-│           │                                        │                │
-└───────────┼────────────────────────────────────────┼────────────────┘
-            │                                        │
-            ▼                                        ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Emby Server                                  │
-└─────────────────────────────────────────────────────────────────────┘
-```
+## Browse cache
 
-### WebSocket-First Architecture
-
-When WebSocket is enabled (default and recommended):
-
-1. Session updates come via WebSocket subscription
-2. Polling interval increases from 10s to 60s (fallback only)
-3. Library changes trigger events instead of hourly polling
-4. Reconnection is automatic with exponential backoff
-
-**When WebSocket is unavailable:**
-- Falls back to HTTP polling
-- Uses configured scan interval (default 10s)
-- Session updates are less responsive
-
-### Polling Intervals
-
-| Coordinator | Default | Configurable | With WebSocket |
-|-------------|---------|--------------|----------------|
-| Session | 10s | Yes (5-300s) | Extended to 60s |
-| Library | 1 hour | Yes (1-24h) | On-demand via events |
-| Server | 5 min | Yes (5m-1h) | N/A (always polls) |
-| Discovery | 30 min | No | N/A |
-
----
-
-## Caching Layers
-
-### 1. Browse Cache
-
-**Purpose:** Cache expensive media browsing API calls
+Browse Media requests can produce large item trees. The integration uses a
+bounded least-recently-used cache with time-based expiry.
 
 | Property | Value |
-|----------|-------|
-| TTL | 5 minutes |
-| Max Entries | 500 |
-| Eviction | LRU (Least Recently Used) |
+| --- | --- |
+| Lifetime | 5 minutes |
+| Maximum entries | 500 |
+| Invalidation | Expiry, explicit refresh, or library change |
 
-**Cached Operations:**
-- Library item listings
-- Genre/year/studio filters
-- Media details
+All Movies and newest-first movie views return at most 1,000 items in one
+response. Users with larger libraries can use the available filters rather
+than loading every item into one frontend card.
 
-**Invalidation:**
-- Manual refresh via UI
-- LibraryChanged WebSocket event
-- TTL expiration
+## Request coalescing
 
-### 2. Discovery Cache
+If several entities ask for the same Emby resource at the same time, the client
+shares the in-progress result instead of issuing duplicate HTTP requests. The
+entry is removed as soon as the request completes or fails.
 
-**Purpose:** Cache user-specific library discovery data
+This is most useful during setup, coordinator refreshes, and dashboards that
+load several related sensors together.
 
-| Property | Value |
-|----------|-------|
-| TTL | 30 minutes |
-| Scope | Per user |
+## Artwork traffic
 
-**Cached Operations:**
-- Latest media items
-- Resume points
-- Favorites counts
-- Library statistics
+Browse and discovery images stream from Emby through Home Assistant in bounded
+chunks. The browser receives cache headers based on the image tag:
 
-### 3. Request Coalescing
+| Image | Cache lifetime |
+| --- | --- |
+| Tagged artwork | One year |
+| Artwork without a tag | Five minutes |
 
-**Purpose:** Deduplicate concurrent identical requests
+The player requests a resized source up to 600 by 900 pixels. For
+`layout=player`, the proxy reads that resized image into memory and embeds it in
+a small SVG canvas. Ordinary browse and discovery requests remain streamed and
+do not use the canvas branch.
 
-When multiple components request the same API call simultaneously (e.g., at startup), only one actual request is made and the result is shared.
+## Recommended settings
 
-**How it works:**
-```python
-# Without coalescing: 5 concurrent calls = 5 API requests
-# With coalescing: 5 concurrent calls = 1 API request, 5 responses
+### Typical server
+
+Use the defaults:
+
+```text
+WebSocket: enabled
+Session scan interval: 10 seconds
+Discovery scan interval: 900 seconds
+Library scan interval: 3600 seconds
+Server scan interval: 300 seconds
 ```
 
----
+### Low-power server
 
-## Configuration Options
+Keep WebSocket enabled and increase periodic refresh intervals:
 
-### Polling Intervals (Options Flow)
-
-Access via: **Settings** → **Devices & Services** → **Emby Media** → **Configure**
-
-| Option | Default | Range | Impact |
-|--------|---------|-------|--------|
-| Scan Interval | 10s | 5-300s | Session update frequency |
-| Library Scan Interval | 1h | 1-24h | Library count updates |
-| Server Scan Interval | 5m | 5m-1h | Server status checks |
-
-### Recommendations
-
-**For typical use:**
-- Keep defaults
-- Enable WebSocket (reduces polling automatically)
-
-**For low-power servers:**
-```
-Library Scan: 24h
-Server Scan: 1h
-WebSocket: Enabled
+```text
+Discovery scan interval: 3600 seconds
+Library scan interval: 86400 seconds
+Server scan interval: 3600 seconds
 ```
 
-**For maximum responsiveness:**
-```
-Scan Interval: 5s
-Library Scan: 1h
-WebSocket: Enabled
-```
+### Faster polling fallback
 
----
+Use a 5-second session interval only when WebSocket cannot remain connected and
+the extra Emby API load is acceptable. Reducing the interval does not improve a
+healthy WebSocket connection.
+
+## Client filters
+
+Use **Ignored devices** or **Ignore web players** when temporary or irrelevant
+sessions create unnecessary entities. Filtering reduces entity updates and
+dashboard noise, but it does not prevent those sessions from existing on Emby
+Server.
 
 ## Diagnostics
 
-The integration exposes efficiency metrics in the diagnostics download:
+Integration diagnostics include API timings, errors, WebSocket activity, cache
+statistics, coalescing data, and coordinator update metrics.
 
-1. Go to **Settings** → **Devices & Services**
-2. Click **Emby Media**
-3. Click ⋮ (three dots) → **Download diagnostics**
+To download them:
 
-### Metrics Available
+1. Open **Settings**, then **Devices & services**.
+2. Select **Emby Media**.
+3. Open the entry menu and select **Download diagnostics**.
 
-```json
-{
-  "efficiency_metrics": {
-    "api_calls": {
-      "/Sessions": {"count": 1543, "avg_ms": 145, "errors": 2}
-    },
-    "websocket": {
-      "messages_received": 4521,
-      "uptime_hours": 168,
-      "reconnections": 3
-    },
-    "coordinators": {
-      "session": {"updates": 1543, "failures": 2, "avg_duration_ms": 180}
-    }
-  }
-}
-```
+Review the file before sharing it. Authentication fields are redacted, but
+names and library details may still be private.
 
-Use this to:
-- Verify WebSocket is working (messages_received should increase)
-- Check API call frequency
-- Identify slow endpoints
-- Diagnose performance issues
+## When to tune
 
----
+Change defaults only when measurements show a reason:
 
-## Contributor Guidelines
+- Delayed state with a disconnected WebSocket
+- High request volume on a low-power Emby server
+- A very large library causing slow browse rendering
+- Discovery data that does not need frequent refreshes
 
-### Adding New API Endpoints
-
-1. **Evaluate caching needs**
-   - Is data static or dynamic?
-   - How often will it be called?
-   - Can results be shared across users?
-
-2. **Use request coalescing for high-frequency calls**
-   - Session endpoints
-   - Library browsing
-   - Any endpoint called during startup
-
-3. **Prefer WebSocket events over polling**
-   - Check Emby's supported message types
-   - Implement event handlers where available
-
-4. **Add metrics instrumentation**
-   - All new `_request*` methods should be timed
-   - Record errors for diagnosis
-
-### Code Example: Adding a Cached Endpoint
-
-```python
-async def async_get_my_data(self, user_id: str) -> dict:
-    """Get data with caching and coalescing."""
-    cache_key = f"my_data_{user_id}"
-
-    # Check cache first
-    cached = self._browse_cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    # Use coalescing for the actual request
-    async with self._request_lock:
-        # Double-check after acquiring lock
-        cached = self._browse_cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        result = await self._request("GET", f"/MyEndpoint/{user_id}")
-        self._browse_cache.set(cache_key, result)
-        return result
-```
-
-### Coordinator Best Practices
-
-1. **Set `always_update=False`** - Only update entities when data changes
-2. **Add `PARALLEL_UPDATES`** - Control concurrent entity updates
-3. **Batch related API calls** - Use `asyncio.gather()` for parallel requests
-4. **Track metrics** - Call `metrics.record_coordinator_update()`
-
----
-
-## Troubleshooting High API Usage
-
-### Symptoms
-- Emby server becoming sluggish
-- High CPU usage on server
-- Network congestion
-
-### Diagnosis Steps
-
-1. **Download diagnostics** (see above)
-2. **Check api_calls counts** - Identify most-called endpoints
-3. **Verify WebSocket is active** - messages_received should be non-zero
-4. **Check for errors** - High error rates cause retries
-
-### Common Causes
-
-| Cause | Solution |
-|-------|----------|
-| WebSocket disabled | Enable WebSocket in options |
-| Very short scan interval | Increase to 30s or higher |
-| Many ignored devices | Consider filtering earlier |
-| Multiple integrations | Use single integration per server |
-
-### Quick Fixes
-
-1. **Increase polling intervals** via Options
-2. **Enable WebSocket** if disabled
-3. **Check for integration loops** in automations
-4. **Restart integration** to reset caches
-
----
-
-## Memory Management
-
-### Bounded Caches
-
-All caches have size limits to prevent memory leaks:
-
-| Cache | Max Entries |
-|-------|-------------|
-| Browse | 500 items |
-| Discovery | Per user, refreshed on interval |
-
-### Cleanup
-
-- Stale cache entries are evicted on TTL expiration
-- Request coalescing clears completed futures immediately
-- Session coordinators clean up removed sessions
-
-### Monitoring
-
-Check memory usage in diagnostics:
-```json
-{
-  "cache_stats": {
-    "hits": 456,
-    "misses": 78,
-    "entries": 234
-  }
-}
-```
-
-If `entries` approaches 500, consider:
-- Increasing TTL (fewer cache misses = slower growth)
-- Reducing library browsing frequency
-
----
-
-## See Also
-
-- **[Configuration](CONFIGURATION.md)** - Detailed configuration options
-- **[Troubleshooting](TROUBLESHOOTING.md)** - General problem solving
-- **[CLAUDE.md](../CLAUDE.md)** - Development guidelines
+Use diagnostics and Emby Server logs to compare behavior before and after a
+change. Larger intervals reduce traffic but delay periodic reconciliation.
