@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Movie library browsing views for all movies, newest date added, and newest premiere date.
 
 ### Fixed
+- Preserve complete now-playing artwork across Home Assistant's square and wide
+  cover-cropped player layouts by serving it on a responsive transparent canvas.
 - Publish the same-origin Emby artwork URL as `entity_picture_local` instead of
   wrapping it in Home Assistant's incompatible generic media-player proxy.
 - Prefer the current season cover, then the series cover, over episode thumbnails for

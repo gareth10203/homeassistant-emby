@@ -57,6 +57,26 @@ class TestEmbyImageProxyView:
         view = EmbyImageProxyView()
         assert view.requires_auth is False
 
+    def test_player_canvas_embeds_raster_without_cropping(self) -> None:
+        """Test the player canvas contains the complete source as a data image."""
+        view = EmbyImageProxyView()
+
+        canvas = view._build_player_canvas(b"fake jpeg", "image/jpeg")
+
+        assert b'<svg xmlns="http://www.w3.org/2000/svg"' in canvas
+        assert b'width="1200" height="400"' in canvas
+        assert b"data:image/jpeg;base64,ZmFrZSBqcGVn" in canvas
+        assert b'preserveAspectRatio="xMidYMid meet"' in canvas
+
+    def test_player_canvas_rejects_untrusted_embedded_media_type(self) -> None:
+        """Test an unexpected upstream type cannot become active SVG content."""
+        view = EmbyImageProxyView()
+
+        canvas = view._build_player_canvas(b"not svg", "image/svg+xml")
+
+        assert b"data:image/jpeg;base64," in canvas
+        assert b"data:image/svg+xml" not in canvas
+
 
 class TestImageProxySetup:
     """Tests for image proxy setup."""

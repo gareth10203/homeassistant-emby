@@ -1665,7 +1665,7 @@ class TestMediaImageUrl:
 
         expected_url = (
             "/api/embymedia/image/server-123/movie-123/Primary"
-            "?maxWidth=300&maxHeight=450&tag=abc123"
+            "?maxWidth=600&maxHeight=900&tag=abc123&layout=player"
         )
         assert player.media_image_url == expected_url
         assert player.media_image_local == expected_url
@@ -1724,7 +1724,7 @@ class TestMediaImageUrl:
 
         assert player.media_image_url == (
             "/api/embymedia/image/server-123/movie-123/Primary"
-            "?maxWidth=300&maxHeight=450"
+            "?maxWidth=600&maxHeight=900&layout=player"
         )
 
     def test_media_image_url_episode_fallback_to_series(
@@ -1750,7 +1750,7 @@ class TestMediaImageUrl:
 
         assert player.media_image_url == (
             "/api/embymedia/image/server-123/series-456/Primary"
-            "?maxWidth=300&maxHeight=450"
+            "?maxWidth=600&maxHeight=900&layout=player"
         )
 
     def test_media_image_url_episode_prefers_season_cover(
@@ -1776,7 +1776,7 @@ class TestMediaImageUrl:
 
         assert player.media_image_url == (
             "/api/embymedia/image/server-123/season-456/Primary"
-            "?maxWidth=300&maxHeight=450"
+            "?maxWidth=600&maxHeight=900&layout=player"
         )
 
     def test_media_image_url_episode_prefers_series_to_thumbnail_without_season(
@@ -1802,7 +1802,7 @@ class TestMediaImageUrl:
 
         assert player.media_image_url == (
             "/api/embymedia/image/server-123/series-789/Primary"
-            "?maxWidth=300&maxHeight=450"
+            "?maxWidth=600&maxHeight=900&layout=player"
         )
 
     def test_media_image_url_audio_fallback_to_album(
@@ -1825,7 +1825,7 @@ class TestMediaImageUrl:
 
         assert player.media_image_url == (
             "/api/embymedia/image/server-123/album-456/Primary"
-            "?maxWidth=300&maxHeight=450"
+            "?maxWidth=600&maxHeight=900&layout=player"
         )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 from http import HTTPStatus
 from typing import TYPE_CHECKING
@@ -31,6 +32,17 @@ STREAM_CHUNK_SIZE = 65536
 
 # Timeout for image fetch requests (seconds)
 IMAGE_FETCH_TIMEOUT = 10
+
+# Wide transparent canvas used for player artwork. Home Assistant renders
+# entity pictures with object-fit/background-size cover in cards ranging from
+# square to very wide. Keeping the portrait inside a 3:1 canvas prevents those
+# built-in layouts from cropping the poster itself.
+PLAYER_CANVAS_WIDTH = 1200
+PLAYER_CANVAS_HEIGHT = 400
+PLAYER_LAYOUT_VALUE = "player"
+SUPPORTED_EMBEDDED_IMAGE_TYPES = frozenset(
+    {"image/avif", "image/gif", "image/jpeg", "image/png", "image/webp"}
+)
 
 
 async def async_setup_image_proxy(hass: HomeAssistant) -> None:
@@ -121,9 +133,24 @@ class EmbyImageProxyView(HomeAssistantView):
                         ),
                     )
 
+                content_type = response.headers.get(
+                    "Content-Type", "application/octet-stream"
+                )
+                if request.query.get("layout") == PLAYER_LAYOUT_VALUE:
+                    image = await response.read()
+                    canvas = self._build_player_canvas(image, content_type)
+                    return web.Response(
+                        status=HTTPStatus.OK,
+                        body=canvas,
+                        headers=self._build_response_headers(
+                            "image/svg+xml",
+                            "tag" in request.query,
+                        ),
+                    )
+
                 # Build streaming response with headers
                 headers = self._build_response_headers(
-                    response.headers.get("Content-Type", "application/octet-stream"),
+                    content_type,
                     "tag" in request.query,
                 )
                 stream_response = web.StreamResponse(
@@ -214,6 +241,22 @@ class EmbyImageProxyView(HomeAssistantView):
                 params.append(f"{key}={query_params[key]}")
 
         return f"{url}?{'&'.join(params)}"
+
+    def _build_player_canvas(self, image: bytes, content_type: str) -> bytes:
+        """Embed artwork in a transparent wide canvas for responsive HA cards."""
+        media_type = content_type.partition(";")[0].strip().lower()
+        if media_type not in SUPPORTED_EMBEDDED_IMAGE_TYPES:
+            media_type = "image/jpeg"
+        encoded = base64.b64encode(image).decode("ascii")
+        return (
+            f'<svg xmlns="http://www.w3.org/2000/svg" '
+            f'width="{PLAYER_CANVAS_WIDTH}" height="{PLAYER_CANVAS_HEIGHT}" '
+            f'viewBox="0 0 {PLAYER_CANVAS_WIDTH} {PLAYER_CANVAS_HEIGHT}">'
+            f'<image href="data:{media_type};base64,{encoded}" x="0" y="0" '
+            f'width="{PLAYER_CANVAS_WIDTH}" height="{PLAYER_CANVAS_HEIGHT}" '
+            'preserveAspectRatio="xMidYMid meet"/>'
+            "</svg>"
+        ).encode()
 
     def _build_response_headers(
         self,

@@ -142,6 +142,8 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         item_id: str,
         image_type: str = "Primary",
         tag: str | None = None,
+        *,
+        player_layout: bool = False,
     ) -> str:
         """Return a same-origin URL for Emby artwork.
 
@@ -149,9 +151,14 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         Returning Emby's HTTP URL there causes mixed-content failures and
         exposes the API key, so use the integration's authenticated proxy.
         """
-        params: dict[str, str | int] = {"maxWidth": 300, "maxHeight": 450}
+        params: dict[str, str | int] = {
+            "maxWidth": 600 if player_layout else 300,
+            "maxHeight": 900 if player_layout else 450,
+        }
         if tag:
             params["tag"] = tag
+        if player_layout:
+            params["layout"] = "player"
         return (
             f"/api/embymedia/image/{quote(self.coordinator.server_id, safe='')}"
             f"/{quote(str(item_id), safe='')}/{quote(image_type, safe='')}"
@@ -362,27 +369,31 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         # Prefer portrait cover art over an episode's landscape thumbnail.
         if now_playing.media_type == EmbyMediaType.EPISODE:
             if now_playing.season_id:
-                return self._image_proxy_url(now_playing.season_id)
+                return self._image_proxy_url(now_playing.season_id, player_layout=True)
             if now_playing.series_id:
-                return self._image_proxy_url(now_playing.series_id)
+                return self._image_proxy_url(now_playing.series_id, player_layout=True)
 
         # Check if item has a Primary image tag
         primary_tag = image_tags_dict.get("Primary")
 
         if primary_tag:
             # Item has its own Primary image
-            return self._image_proxy_url(now_playing.item_id, tag=primary_tag)
+            return self._image_proxy_url(
+                now_playing.item_id,
+                tag=primary_tag,
+                player_layout=True,
+            )
 
         # Fallback for incomplete episode metadata.
         if now_playing.series_id:
-            return self._image_proxy_url(now_playing.series_id)
+            return self._image_proxy_url(now_playing.series_id, player_layout=True)
 
         # Fallback: Audio -> Album
         if now_playing.album_id:
-            return self._image_proxy_url(now_playing.album_id)
+            return self._image_proxy_url(now_playing.album_id, player_layout=True)
 
         # Final fallback: Use item ID without tag
-        return self._image_proxy_url(now_playing.item_id)
+        return self._image_proxy_url(now_playing.item_id, player_layout=True)
 
     @property
     def media_image_local(self) -> str | None:
