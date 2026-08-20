@@ -51,6 +51,10 @@ _LOGGER = logging.getLogger(__name__)
 # This is required for Home Assistant Integration Quality Scale Silver tier
 PARALLEL_UPDATES = 1
 
+# A movie library browse result is rendered as one BrowseMedia response. Keep
+# the request bounded so a very large library does not overwhelm the frontend.
+_MOVIE_BROWSE_LIMIT = 1000
+
 # Map Emby media types to HA media types
 _MEDIA_TYPE_MAP: dict[EmbyMediaType, MediaType] = {
     EmbyMediaType.MOVIE: MediaType.MOVIE,
@@ -896,6 +900,33 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
         # Movie library routing
         if content_type == "movielibrary" and ids:
             return await self._async_browse_movie_library(user_id, ids[0])
+        if content_type == "movieall" and ids:
+            return await self._async_browse_movies_sorted(
+                user_id,
+                ids[0],
+                content_type="movieall",
+                title="All Movies",
+                sort_by="SortName",
+                sort_order="Ascending",
+            )
+        if content_type == "movieadded" and ids:
+            return await self._async_browse_movies_sorted(
+                user_id,
+                ids[0],
+                content_type="movieadded",
+                title="Date Added (Newest First)",
+                sort_by="DateCreated",
+                sort_order="Descending",
+            )
+        if content_type == "moviepremiere" and ids:
+            return await self._async_browse_movies_sorted(
+                user_id,
+                ids[0],
+                content_type="moviepremiere",
+                title="Premiere Date (Newest First)",
+                sort_by="PremiereDate",
+                sort_order="Descending",
+            )
         if content_type == "movieaz" and ids:
             return await self._async_browse_movie_az(user_id, ids[0])
         if content_type == "movieazletter" and len(ids) >= 2:
@@ -1769,8 +1800,8 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
     async def _async_browse_movie_library(self, user_id: str, library_id: str) -> BrowseMedia:
         """Browse a movies library - show category menu.
 
-        Movies libraries show categories (A-Z, Year, Decade, Genre, Collections)
-        to organize large collections effectively.
+        Movies libraries show complete-library, sort, and filter categories to
+        organize large collections effectively.
 
         Args:
             user_id: The user ID for API calls.
@@ -1780,6 +1811,9 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
             BrowseMedia with categories as children.
         """
         categories = [
+            ("All", "movieall", MediaClass.DIRECTORY),
+            ("Date Added (Newest First)", "movieadded", MediaClass.DIRECTORY),
+            ("Premiere Date (Newest First)", "moviepremiere", MediaClass.DIRECTORY),
             ("A-Z", "movieaz", MediaClass.DIRECTORY),
             ("Year", "movieyear", MediaClass.DIRECTORY),
             ("Decade", "moviedecade", MediaClass.DIRECTORY),
@@ -1809,6 +1843,46 @@ class EmbyMediaPlayer(EmbyEntity, MediaPlayerEntity):
             media_content_id=encode_content_id("movielibrary", library_id),
             media_content_type=MediaType.VIDEO,
             title="Movies Library",
+            can_play=False,
+            can_expand=True,
+            children=children,
+        )
+
+    async def _async_browse_movies_sorted(
+        self,
+        user_id: str,
+        library_id: str,
+        *,
+        content_type: str,
+        title: str,
+        sort_by: str,
+        sort_order: str,
+    ) -> BrowseMedia:
+        """Browse movies using an Emby server-side sort order."""
+        coordinator: EmbyDataUpdateCoordinator = self.coordinator
+        client = coordinator.client
+
+        try:
+            result = await client.async_get_items(
+                user_id,
+                parent_id=library_id,
+                include_item_types="Movie",
+                sort_by=sort_by,
+                sort_order=sort_order,
+                limit=_MOVIE_BROWSE_LIMIT,
+                recursive=True,
+            )
+            items = result.get("Items", [])
+        except EmbyError as err:
+            _LOGGER.debug("Failed to get sorted movies (%s): %s", sort_by, err)
+            items = []
+
+        children = [self._item_to_browse_media(item) for item in items]
+        return BrowseMedia(
+            media_class=MediaClass.DIRECTORY,
+            media_content_id=encode_content_id(content_type, library_id),
+            media_content_type=MediaType.VIDEO,
+            title=title,
             can_play=False,
             can_expand=True,
             children=children,

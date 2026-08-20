@@ -2094,14 +2094,78 @@ class TestMovieLibraryBrowsing:
 
         assert isinstance(result, BrowseMedia)
         assert result.children is not None
-        # Should have categories: A-Z, Year, Decade, Genre, Collections
-        assert len(result.children) >= 5
+        # The first entries are the complete library and server-side sort views.
+        assert len(result.children) >= 8
         category_titles = [c.title for c in result.children]
+        assert category_titles[:3] == [
+            "All",
+            "Date Added (Newest First)",
+            "Premiere Date (Newest First)",
+        ]
         assert "A-Z" in category_titles
         assert "Year" in category_titles
         assert "Decade" in category_titles
         assert "Genre" in category_titles
         assert "Collections" in category_titles
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("content_id", "title", "sort_by", "sort_order"),
+        [
+            ("movieall:lib-movies", "All Movies", "SortName", "Ascending"),
+            (
+                "movieadded:lib-movies",
+                "Date Added (Newest First)",
+                "DateCreated",
+                "Descending",
+            ),
+            (
+                "moviepremiere:lib-movies",
+                "Premiere Date (Newest First)",
+                "PremiereDate",
+                "Descending",
+            ),
+        ],
+    )
+    async def test_browse_movie_sorted_views(
+        self,
+        hass: HomeAssistant,
+        mock_coordinator_for_browse: MagicMock,
+        mock_session_with_user: MagicMock,
+        content_id: str,
+        title: str,
+        sort_by: str,
+        sort_order: str,
+    ) -> None:
+        """Test all and both newest-first movie views use Emby sorting."""
+        from custom_components.embymedia.media_player import EmbyMediaPlayer
+
+        mock_coordinator_for_browse.client.async_get_items = AsyncMock(
+            return_value={
+                "Items": [{"Id": "movie-1", "Name": "Example Movie", "Type": "Movie"}],
+                "TotalRecordCount": 1,
+            }
+        )
+        mock_coordinator_for_browse.get_session.return_value = mock_session_with_user
+
+        player = EmbyMediaPlayer(mock_coordinator_for_browse, "device-abc-123")
+        result = await player.async_browse_media(
+            media_content_type=MediaType.VIDEO,
+            media_content_id=content_id,
+        )
+
+        assert result.title == title
+        assert result.children is not None
+        assert result.children[0].title == "Example Movie"
+        mock_coordinator_for_browse.client.async_get_items.assert_awaited_once_with(
+            "user-xyz-789",
+            parent_id="lib-movies",
+            include_item_types="Movie",
+            sort_by=sort_by,
+            sort_order=sort_order,
+            limit=1000,
+            recursive=True,
+        )
 
     @pytest.mark.asyncio
     async def test_browse_movie_az_shows_letters(
